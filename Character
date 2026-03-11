@@ -1,0 +1,459 @@
+-- Decompiled with Velocity Script Decompiler (renamed for readability)
+local CharacterEditor = {}
+
+if game:GetService("RunService"):IsClient() == false then
+	return CharacterEditor
+end
+
+local localPlayer = game.Players.LocalPlayer
+local buildEvent = game.ReplicatedStorage.Remotes.BuildEvent
+local selectionHandler = require(script.Parent.Handle)
+local uiSounds = game.ReplicatedStorage.Sounds.Misc.UI
+local httpService = game:GetService("HttpService")
+game:GetService("UserInputService")
+game:GetService("Debris")
+game:GetService("EncodingService")
+
+local characterGui = script.Parent.Parent
+local menu1 = characterGui.Menu
+local menu2 = characterGui.Menu2
+local menu3 = characterGui.Menu3
+
+require(game.ReplicatedStorage.Modules.ListData)
+local base64 = require(game.ReplicatedStorage.Modules.Base64)
+
+-- Currently selected skill slot index (layout order)
+local selectedSkillIndex = nil
+-- Table of all skill entries keyed by layout order index
+local skillEntries = {}
+
+-- Schema defining valid fields per skill type:
+-- Each entry is { fieldName, inputType (1=bool, 2=number, 3=string, 4=button), defaultValue }
+local skillFieldSchema = {
+	["SKILL"] = {
+		{ "DATA", 4, nil },
+		{ "NAME", 3, "Unnamed" },
+		{ "COOLDOWN", 2, 0 },
+		{ "KEY", 2, 1 },
+		{ "ADD", 1, false }
+	},
+	["SPECIAL"] = {
+		{ "DATA", 4, nil },
+		{ "NAME", 3, "Unnamed" },
+		{ "COOLDOWN", 2, 0 }
+	},
+	["AWAKENING"] = {
+		{ "DATA", 4, nil },
+		{ "NAME", 3, "Unnamed" },
+		{ "DURATION", 2, 0 },
+		{ "DELAY", 2, 0 }
+	},
+	["MELEE"] = {
+		{ "DATA", 4, nil },
+		{ "NAME", 3, "Unnamed" }
+	},
+	["CHASE"] = {
+		{ "DATA", 4, nil },
+		{ "NAME", 3, "Unnamed" },
+		{ "COOLDOWN", 2, 6 }
+	}
+}
+
+-- Sets the visual toggle state (green = on, red = off) for a toggle UI element
+local function setToggleVisual(toggleFrame, isEnabled)
+	if isEnabled == true then
+		toggleFrame.Toggle.BackgroundColor3 = Color3.fromRGB(85, 255, 0)
+		toggleFrame.Toggle.Side.BackgroundColor3 = Color3.fromRGB(169, 255, 189)
+		toggleFrame.Toggle.Side.Position = UDim2.new(0, 0, 0, 0)
+	else
+		toggleFrame.Toggle.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+		toggleFrame.Toggle.Side.BackgroundColor3 = Color3.fromRGB(85, 0, 0)
+		toggleFrame.Toggle.Side.Position = UDim2.new(0.5, 0, 0, 0)
+	end
+end
+
+-- Performs a deep clone of a table (recursively copies nested tables)
+local function deepClone(tbl)
+	local clone = table.clone(tbl)
+	for key, value in tbl do
+		if type(value) == "table" then
+			clone[key] = deepClone(value)
+		end
+	end
+	return clone
+end
+
+local characterEditorPanel = script.Parent.Parent.Character
+
+-- Returns the timeline button corresponding to a given layout order index (defaults to selectedSkillIndex)
+local function getTimelineButtonByIndex(index)
+	local result = nil
+	for _, button in characterEditorPanel.Timeline.Timeline:GetChildren() do
+		if button:IsA("TextButton") and button.LayoutOrder == (index or selectedSkillIndex) then
+			return button
+		end
+	end
+	return result
+end
+
+function CharacterEditor.updateSkillData(_, encodedData)
+	skillEntries[selectedSkillIndex].DATA = encodedData
+	local jsonData = httpService:JSONEncode(skillEntries)
+	buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonData)
+end
+
+-- Refreshes the properties panel for the currently selected skill slot
+local function refreshPropertiesPanel()
+	-- Clear old property UI elements
+	for _, child in characterEditorPanel.Timeline.Properties:GetChildren() do
+		if not child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+
+	if selectedSkillIndex and skillEntries[selectedSkillIndex] then
+		characterEditorPanel.Timeline.Properties.Visible = true
+		characterEditorPanel.Timeline.Items.Visible = false
+		characterEditorPanel.Toolbar.Visible = true
+		characterEditorPanel.Toolbar2.Visible = false
+
+		-- Highlight selected timeline button
+		for _, button in characterEditorPanel.Timeline.Timeline:GetChildren() do
+			if button:IsA("TextButton") then
+				if button.LayoutOrder == selectedSkillIndex then
+					button.BorderColor3 = Color3.fromRGB(85, 255, 255)
+				else
+					button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				end
+			end
+		end
+
+		local selectedButton = getTimelineButtonByIndex()
+		local skillTypeLabel = characterEditorPanel.Timeline.Items[selectedButton.Name].Text
+		local skillData = skillEntries[selectedSkillIndex]
+
+		-- Build property inputs based on skill type schema
+		for fieldOrder, fieldDef in skillFieldSchema[skillData.K_NAME] do
+			local fieldName = fieldDef[1]
+			local inputType = fieldDef[2]
+
+			if inputType == 1 then
+				-- Boolean toggle
+				local boolOption = characterGui.Preset.OptionBool:Clone()
+				boolOption.Option.Text = fieldName
+				boolOption.LayoutOrder = fieldOrder
+				setToggleVisual(boolOption, skillData[fieldName] == true)
+				boolOption.Parent = characterEditorPanel.Timeline.Properties
+				boolOption.Toggle.Side.MouseButton1Down:Connect(function()
+					skillData[fieldName] = skillData[fieldName] ~= true
+					setToggleVisual(boolOption, skillData[fieldName] == true)
+					local btn = selectedButton
+					local label = skillTypeLabel
+					btn.Text = "[" .. tostring(skillData.NAME) .. "] " .. label
+					local jsonEncoded = httpService:JSONEncode(skillEntries)
+					buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+				end)
+
+			elseif inputType == 2 then
+				-- Numeric text input
+				local numOption = characterGui.Preset.OptionText:Clone()
+				numOption.Option.Text = fieldName
+				numOption.LayoutOrder = fieldOrder
+				numOption.TextBox.Text = tostring(skillData[fieldName])
+				numOption.Parent = characterEditorPanel.Timeline.Properties
+				numOption.TextBox.FocusLost:Connect(function()
+					skillData[fieldName] = tonumber(numOption.TextBox.Text)
+					local btn = selectedButton
+					btn.Text = "[" .. tostring(skillData.NAME) .. "] " .. skillTypeLabel
+					local jsonEncoded = httpService:JSONEncode(skillEntries)
+					buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+				end)
+
+			elseif inputType == 3 then
+				-- String text input
+				local strOption = characterGui.Preset.OptionText:Clone()
+				strOption.Option.Text = fieldName
+				strOption.LayoutOrder = fieldOrder
+				strOption.TextBox.Text = tostring(skillData[fieldName])
+				strOption.Parent = characterEditorPanel.Timeline.Properties
+				strOption.TextBox.FocusLost:Connect(function()
+					skillData[fieldName] = tostring(strOption.TextBox.Text)
+					local btn = selectedButton
+					btn.Text = "[" .. tostring(skillData.NAME) .. "] " .. skillTypeLabel
+					local jsonEncoded = httpService:JSONEncode(skillEntries)
+					buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+				end)
+				if fieldName == "VARIANT" then
+					strOption.TextBox.PlaceholderText = "UP | DOWN"
+				end
+
+			elseif inputType == 4 then
+				-- Button that opens the Builder skill editor
+				local btnOption = characterGui.Preset.OptionButton:Clone()
+				btnOption.Option.Text = fieldName
+				btnOption.LayoutOrder = fieldOrder
+				btnOption.Parent = characterEditorPanel.Timeline.Properties
+				btnOption.TextButton.MouseButton1Down:Connect(function()
+					characterEditorPanel.Visible = false
+					characterEditorPanel.Parent.Builder.Visible = true
+					require(script.Parent.Builder):updateKeys(skillData[fieldName], true)
+				end)
+			end
+		end
+	else
+		-- No skill selected — show item list
+		characterEditorPanel.Timeline.Properties.Visible = false
+		characterEditorPanel.Timeline.Items.Visible = true
+		characterEditorPanel.Toolbar.Visible = false
+		characterEditorPanel.Toolbar2.Visible = true
+		for _, button in characterEditorPanel.Timeline.Timeline:GetChildren() do
+			if button:IsA("TextButton") then
+				button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			end
+		end
+	end
+end
+
+-- Creates a timeline button for a skill entry and wires up its click handler
+local function addSkillTimelineButton(sourceButton, slotIndex)
+	local newButton = sourceButton:Clone()
+	newButton.LayoutOrder = slotIndex
+	newButton.Size = UDim2.new(1, -5, 0.115, 0)
+	newButton.Parent = characterEditorPanel.Timeline.Timeline
+
+	local entry = skillEntries[slotIndex]
+	local typeLabel = sourceButton.Text
+	newButton.Text = "[" .. tostring(entry.NAME) .. "] " .. typeLabel
+
+	local jsonEncoded = httpService:JSONEncode(skillEntries)
+	buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+
+	newButton.MouseButton1Down:Connect(function()
+		if selectedSkillIndex == newButton.LayoutOrder then
+			selectedSkillIndex = nil
+		else
+			selectedSkillIndex = newButton.LayoutOrder
+		end
+		refreshPropertiesPanel()
+	end)
+end
+
+-- Populate skill type buttons in the item list
+for _, skillTypeButton in characterEditorPanel.Timeline.Items:GetChildren() do
+	if skillTypeButton:IsA("TextButton") then
+		skillTypeButton.MouseButton1Down:Connect(function()
+			if skillFieldSchema[skillTypeButton.Name] then
+				-- Find next available slot index
+				local nextIndex = 1
+				for _, _ in skillEntries do
+					nextIndex = nextIndex + 1
+				end
+				selectedSkillIndex = nextIndex
+				skillEntries[nextIndex] = {
+					["K_NAME"] = skillTypeButton.Name
+				}
+				for _, fieldDef in skillFieldSchema[skillTypeButton.Name] do
+					skillEntries[nextIndex][fieldDef[1]] = fieldDef[3]
+				end
+				addSkillTimelineButton(skillTypeButton, nextIndex)
+				refreshPropertiesPanel()
+				local jsonEncoded = httpService:JSONEncode(skillEntries)
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+			end
+		end)
+	end
+end
+
+-- Delete selected skill entry
+characterEditorPanel.Toolbar.Kill.MouseButton1Down:Connect(function()
+	if characterEditorPanel.Timeline.Visible == true then
+		if not selectedSkillIndex then return end
+		local button = getTimelineButtonByIndex()
+		if not button then return end
+		button:Destroy()
+		skillEntries[selectedSkillIndex] = nil
+
+		-- Compact indices downward to fill the gap
+		for index, entry in skillEntries do
+			local btn = getTimelineButtonByIndex(index)
+			for compactIndex = index, 1, -1 do
+				if not skillEntries[compactIndex] then
+					skillEntries[compactIndex] = entry
+					skillEntries[index] = nil
+					btn.LayoutOrder = compactIndex
+					break
+				end
+			end
+		end
+
+		refreshPropertiesPanel()
+		local jsonEncoded = httpService:JSONEncode(skillEntries)
+		buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+	end
+end)
+
+-- Move selected skill entry up in the list
+characterEditorPanel.Toolbar.Up.MouseButton1Down:Connect(function()
+	if characterEditorPanel.Timeline.Visible == true then
+		if not selectedSkillIndex then return end
+		local currentEntry = skillEntries[selectedSkillIndex]
+		local entryAbove = skillEntries[selectedSkillIndex - 1]
+		if not entryAbove then return end
+		local currentButton = getTimelineButtonByIndex()
+		local buttonAbove = getTimelineButtonByIndex(selectedSkillIndex - 1)
+		if not (currentButton and buttonAbove) then return end
+		skillEntries[selectedSkillIndex] = entryAbove
+		skillEntries[selectedSkillIndex - 1] = currentEntry
+		currentButton.LayoutOrder = selectedSkillIndex - 1
+		buttonAbove.LayoutOrder = selectedSkillIndex
+		selectedSkillIndex = selectedSkillIndex - 1
+		refreshPropertiesPanel()
+		local jsonEncoded = httpService:JSONEncode(skillEntries)
+		buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+	end
+end)
+
+-- Move selected skill entry down in the list
+characterEditorPanel.Toolbar.Down.MouseButton1Down:Connect(function()
+	if characterEditorPanel.Timeline.Visible == true then
+		if not selectedSkillIndex then return end
+		local currentEntry = skillEntries[selectedSkillIndex]
+		local entryBelow = skillEntries[selectedSkillIndex + 1]
+		if not entryBelow then return end
+		local currentButton = getTimelineButtonByIndex()
+		local buttonBelow = getTimelineButtonByIndex(selectedSkillIndex + 1)
+		if not (currentButton and buttonBelow) then return end
+		skillEntries[selectedSkillIndex] = entryBelow
+		skillEntries[selectedSkillIndex + 1] = currentEntry
+		currentButton.LayoutOrder = selectedSkillIndex + 1
+		buttonBelow.LayoutOrder = selectedSkillIndex
+		selectedSkillIndex = selectedSkillIndex + 1
+		refreshPropertiesPanel()
+		local jsonEncoded = httpService:JSONEncode(skillEntries)
+		buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+	end
+end)
+
+-- Duplicate selected skill entry and insert it after the current position
+characterEditorPanel.Toolbar.Copy.MouseButton1Down:Connect(function()
+	if characterEditorPanel.Timeline.Visible == true then
+		if not selectedSkillIndex then return end
+		local entryToCopy = skillEntries[selectedSkillIndex]
+		local skillTypeItem = characterEditorPanel.Timeline.Items:FindFirstChild(entryToCopy.K_NAME)
+		if not skillTypeItem then return end
+
+		-- Count total entries
+		local totalEntries = 0
+		for _, _ in skillEntries do
+			totalEntries = totalEntries + 1
+		end
+
+		-- Shift all entries after the selection down by one
+		for shiftIndex = totalEntries, 1, -1 do
+			if shiftIndex <= selectedSkillIndex then break end
+			local shiftButton = getTimelineButtonByIndex(shiftIndex)
+			skillEntries[shiftIndex + 1] = skillEntries[shiftIndex]
+			skillEntries[shiftIndex] = nil
+			shiftButton.LayoutOrder = shiftIndex + 1
+		end
+
+		-- Insert the duplicate at the next slot
+		selectedSkillIndex = selectedSkillIndex + 1
+		skillEntries[selectedSkillIndex] = deepClone(entryToCopy)
+		addSkillTimelineButton(skillTypeItem, selectedSkillIndex)
+		refreshPropertiesPanel()
+
+		local jsonEncoded = httpService:JSONEncode(skillEntries)
+		buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", jsonEncoded)
+	end
+end)
+
+-- Export box (shown when user clicks Export)
+local exportTextBox = nil
+
+characterEditorPanel.Toolbar2.Export.MouseButton1Down:Connect(function()
+	if exportTextBox then
+		exportTextBox:Destroy()
+		exportTextBox = nil
+	end
+	exportTextBox = characterEditorPanel.Parent.Preset.TextBox:Clone()
+	exportTextBox.TextEditable = false
+	exportTextBox.Text = base64.to_base64(httpService:JSONEncode(skillEntries))
+	exportTextBox.Parent = characterEditorPanel
+
+	local function selectAllText()
+		exportTextBox.SelectionStart = 0
+		exportTextBox.CursorPosition = #exportTextBox.Text + 1
+	end
+	exportTextBox.Focused:Connect(selectAllText)
+	exportTextBox:GetPropertyChangedSignal("SelectionStart"):Connect(selectAllText)
+	exportTextBox:GetPropertyChangedSignal("CursorPosition"):Connect(selectAllText)
+	exportTextBox.SelectionStart = 0
+	exportTextBox.CursorPosition = #exportTextBox.Text + 1
+
+	exportTextBox.TextButton.MouseButton1Down:Connect(function()
+		exportTextBox:Destroy()
+		exportTextBox = nil
+	end)
+end)
+
+characterEditorPanel.Toolbar2.Import.MouseButton1Down:Connect(function()
+	if exportTextBox then
+		exportTextBox:Destroy()
+		exportTextBox = nil
+	end
+	exportTextBox = characterEditorPanel.Parent.Preset.TextBox:Clone()
+	exportTextBox.Parent = characterEditorPanel
+
+	exportTextBox.TextButton.MouseButton1Down:Connect(function()
+		local success, err = pcall(function()
+			local decoded = base64.from_base64(exportTextBox.Text)
+			httpService:JSONDecode(decoded)
+			CharacterEditor:updateKeys(decoded)
+		end)
+		if not success then
+			warn(err)
+		end
+	end)
+end)
+
+function CharacterEditor.updateKeys(_, encodedData)
+	if encodedData == nil then
+		encodedData = {}
+	else
+		local success, err = pcall(function()
+			encodedData = game:GetService("HttpService"):JSONDecode(encodedData)
+		end)
+		if not success then
+			encodedData = {}
+			warn(err)
+		end
+	end
+
+	skillEntries = encodedData
+	selectedSkillIndex = nil
+
+	-- Clear existing timeline buttons
+	for _, button in characterEditorPanel.Timeline.Timeline:GetChildren() do
+		if button:IsA("TextButton") then
+			button:Destroy()
+		end
+	end
+
+	-- Remove any open export/import box
+	if exportTextBox then
+		exportTextBox:Destroy()
+		exportTextBox = nil
+	end
+
+	-- Re-populate timeline from loaded data
+	for slotIndex, entry in skillEntries do
+		if skillFieldSchema[entry.K_NAME] then
+			addSkillTimelineButton(characterEditorPanel.Timeline.Items[entry.K_NAME], slotIndex)
+		end
+	end
+
+	refreshPropertiesPanel()
+end
+
+return CharacterEditor
