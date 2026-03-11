@@ -1,0 +1,191 @@
+-- Decompiled with Velocity Script Decompiler (renamed for readability)
+local SelectionHandler = {}
+
+if game:GetService("RunService"):IsClient() == false then
+	return SelectionHandler
+end
+
+local localPlayer = game.Players.LocalPlayer
+local buildEvent = game.ReplicatedStorage.Remotes.BuildEvent
+game:GetService("UserInputService")
+
+local builderGui = script.Parent.Parent
+local selectionBox = builderGui.Select
+local selectionHandles = selectionBox.Handles
+local selectionArcHandles = selectionBox.ArcHandles
+local propertiesMenu = builderGui.Menu
+local logicPropertiesMenu = builderGui.Menu2
+local logicMenu3 = builderGui.Menu3
+
+SelectionHandler.Selected = {}
+SelectionHandler.Copy = {}
+SelectionHandler.SelectBox = selectionBox
+selectionBox.Parent = nil
+
+local uiSounds = game.ReplicatedStorage.Sounds.Misc.UI
+
+function SelectionHandler.PlaySound(_, sound)
+	local soundClone = sound:Clone()
+	soundClone.Parent = workspace
+	soundClone.PlayOnRemove = true
+	soundClone.SoundGroup = game.SoundService.Effect
+	soundClone:Destroy()
+end
+
+function SelectionHandler.GetBoundingBox(_, parts, referenceCFrame)
+	local cf = referenceCFrame or CFrame.identity
+	local maxZ = (-1 / 0)
+	local minX = (1 / 0)
+	local minY = (1 / 0)
+	local minZ = (1 / 0)
+	local maxX = (-1 / 0)
+	local maxY = (-1 / 0)
+
+	for part, _ in pairs(parts) do
+		local size = part.Size
+		local sX = size.X
+		local sY = size.Y
+		local sZ = size.Z
+		local r00, r01, r02, r10, r11, r12, r20, r21, r22, tX, tY, tZ =
+			cf:ToObjectSpace(part.CFrame):GetComponents()
+
+		local extentX = (math.abs(r00) * sX + math.abs(r01) * sY + math.abs(r02) * sZ) * 0.5
+		local extentY = (math.abs(r10) * sX + math.abs(r11) * sY + math.abs(r12) * sZ) * 0.5
+		local extentZ = (math.abs(r20) * sX + math.abs(r21) * sY + math.abs(r22) * sZ) * 0.5
+
+		if tX - extentX < minX then minX = tX - extentX end
+		if tY - extentY < minY then minY = tY - extentY end
+		if tZ - extentZ < minZ then minZ = tZ - extentZ end
+		if maxX < tX + extentX then maxX = tX + extentX end
+		if maxY < tY + extentY then maxY = tY + extentY end
+		if maxZ < tZ + extentZ then maxZ = tZ + extentZ end
+	end
+
+	local boundsMin = Vector3.new(minX, minY, minZ)
+	local boundsMax = Vector3.new(maxX, maxY, maxZ)
+	return cf + cf:PointToWorldSpace((boundsMax + boundsMin) * 0.5), boundsMax - boundsMin
+end
+
+function SelectionHandler.SendSelected(_)
+	local selectedList = {}
+	for part, _ in SelectionHandler.Selected do
+		table.insert(selectedList, part)
+	end
+	return selectedList
+end
+
+function SelectionHandler.FirstSelected()
+	-- failed to decompile
+end
+
+function SelectionHandler.FindSelection(_)
+	local rotationCFrame = CFrame.new().Rotation
+	if not _G.GlobalAxis then
+		local firstPart = SelectionHandler:FirstSelected()
+		if not firstPart then
+			return
+		end
+		rotationCFrame = firstPart.CFrame.Rotation
+	end
+
+	local boundsCFrame, boundsSize = SelectionHandler:GetBoundingBox(SelectionHandler.Selected, rotationCFrame)
+	selectionBox.Size = boundsSize
+	selectionBox.CFrame = boundsCFrame
+
+	-- Sync selection highlight borders
+	local alreadyHighlighted = {}
+	for _, border in selectionBox.Model:GetChildren() do
+		if SelectionHandler.Selected[border.Adornee] then
+			alreadyHighlighted[border.Adornee] = true
+		else
+			border:Destroy()
+		end
+	end
+	for part, _ in SelectionHandler.Selected do
+		if not alreadyHighlighted[part] then
+			local border = script.Border:Clone()
+			border.Adornee = part
+			border.Parent = selectionBox.Model
+		end
+	end
+end
+
+function SelectionHandler.DeselectPart(_, part)
+	if SelectionHandler.Selected[part] then
+		SelectionHandler.Selected[part]:Disconnect()
+	end
+	SelectionHandler.Selected[part] = nil
+
+	if #SelectionHandler.Selected <= 0 then
+		propertiesMenu.Properties.Visible = false
+		propertiesMenu.Properties2.Visible = false
+		propertiesMenu.DeleteMulti.Visible = false
+		propertiesMenu.Parts.Visible = true
+		logicPropertiesMenu.Visible = false
+		propertiesMenu.Parent.Builder.Visible = false
+		propertiesMenu.Parent.Character.Visible = false
+		selectionBox.Parent = nil
+	else
+		SelectionHandler:FindSelection()
+	end
+end
+
+-- Maps special part class names to their canonical type name for property panel filtering
+local partTypeAliases = {
+	["SpawnLocation"] = "Part",
+	["Truss"] = "Part",
+	["Wedge"] = "Part"
+}
+
+function SelectionHandler.SelectPart(self, part)
+	local ancestryConnection = part.AncestryChanged:Connect(function()
+		if part.Parent == nil then
+			SelectionHandler:DeselectPart(part)
+		end
+	end)
+
+	if SelectionHandler.Selected[part] then
+		SelectionHandler.Selected[part]:Disconnect()
+	end
+	SelectionHandler.Selected[part] = ancestryConnection
+	SelectionHandler:FindSelection()
+
+	selectionBox.Parent = script.Parent.Parent
+	require(script.Parent.Properties):UpdateProperties(part)
+	propertiesMenu.DeleteMulti.Visible = false
+
+	local selectedList = self:SendSelected()
+	local firstType = nil
+	for _, selectedPart in selectedList do
+		local partType = partTypeAliases[selectedPart.Name] or selectedPart.Name
+		firstType = firstType or partType
+		if not selectedPart:IsA("SpawnLocation") then
+			propertiesMenu.Properties.Neutral.Visible = false
+		end
+		if partType ~= firstType then
+			propertiesMenu.Properties2.Visible = false
+			propertiesMenu.Properties.Visible = false
+			propertiesMenu.DeleteMulti.Visible = true
+			logicPropertiesMenu.Visible = false
+			return
+		end
+	end
+end
+
+function SelectionHandler.CopyPart(_)
+	copy = SelectionHandler:SendSelected()
+	if #copy > 0 then
+		buildEvent:FireServer("Copy", copy)
+	end
+end
+
+function SelectionHandler.PastePart(_)
+	if #copy > 0 then
+		for part, _ in SelectionHandler.Selected do
+			SelectionHandler:DeselectPart(part)
+		end
+		buildEvent:FireServer("Paste")
+	end
+end
+
+return SelectionHandler
