@@ -1,0 +1,1881 @@
+-- Decompiled with Velocity Script Decompiler
+local SkillBuilder = {}
+local lineItemSchema = require(game.ReplicatedStorage.Modules.SkillDefault).LineItems
+local defaultSkillProps = require(game.ReplicatedStorage.Modules.SkillDefault).defaultProp
+local fieldKeyMap = {
+	["WAIT"] = "TIME",
+	["SKILL"] = "MOVE",
+	["SPECIAL"] = "SPEC",
+	["ANIM"] = "ANIM_USE",
+	["SFX"] = "ID",
+	["VELO"] = "FORCE",
+	["CONNECT"] = "SIGNAL",
+	["ULTGIB"] = "AMOUNT",
+	["HPGIB"] = "AMOUNT",
+	["EVGIB"] = "AMOUNT",
+	["HITCNCL"] = "TIME",
+	["HITBOX"] = "DAMAGE",
+	["BRANCH"] = "BRANCH",
+	["VISUAL"] = "EFFECT",
+	["GRAB"] = "TIME",
+	["LOOP"] = "LOOP AMOUNT",
+	["PROJECTILE"] = "PROJECTILE TAG",
+	["COUNTER"] = "ATTACK TYPE",
+	["TAG"] = "TAG",
+	["STATE"] = "STATE",
+	["AIR"] = "FLIP",
+	["JUMP"] = "FLIP",
+	["AIM"] = "FLIP",
+	["ULT"] = "FLIP",
+	["BAR"] = "AMOUNT",
+	["HP"] = "AMOUNT",
+	["DOMAIN"] = "FLIP",
+	["DUR"] = "DURABILITY"
+}
+if game:GetService("RunService"):IsClient() == false then
+	return SkillBuilder
+end
+local isCharacterMode = false
+local localPlayer = game.Players.LocalPlayer
+local buildEvent = game.ReplicatedStorage.Remotes.BuildEvent
+local selectionHandler = require(script.Parent.Handle)
+local _ = game.ReplicatedStorage.Sounds.Misc.UI
+local httpService = game:GetService("HttpService")
+local userInputService = game:GetService("UserInputService")
+local debrisService = game:GetService("Debris")
+local builderGui = script.Parent.Parent
+local _ = builderGui.Menu
+local _ = builderGui.Menu2
+local _ = builderGui.Menu3
+local listData = require(game.ReplicatedStorage.Modules.ListData)
+local builderFX = require(game.ReplicatedStorage.Modules.BuilderFX)
+local function setToggleVisual(p15, p16)
+	if p16 == true then
+		p15.Toggle.BackgroundColor3 = Color3.fromRGB(85, 255, 0)
+		p15.Toggle.Side.BackgroundColor3 = Color3.fromRGB(169, 255, 189)
+		p15.Toggle.Side.Position = UDim2.new(0, 0, 0, 0)
+	else
+		p15.Toggle.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+		p15.Toggle.Side.BackgroundColor3 = Color3.fromRGB(85, 0, 0)
+		p15.Toggle.Side.Position = UDim2.new(0.5, 0, 0, 0)
+	end
+end
+local selectedLineIndex = nil
+local selectedConditionIndex = nil
+local activeBranchName = nil
+local skillData = {
+	["Line"] = {},
+	["Req"] = {},
+	["Prop"] = {}
+}
+local currentLineEntries = skillData.Line
+local currentConditionEntries = skillData.Req
+local previewStartTime = nil
+local previewEndTime = nil
+local animationTotalLength = nil
+local activeAnimationTrack = nil
+local isDragging = false
+local emoteList = game.ReplicatedStorage.Remotes.EmoteList:InvokeServer()
+userInputService.InputEnded:Connect(function(p30)
+	-- upvalues: (ref) isDragging
+	if p30.UserInputType == Enum.UserInputType.MouseButton1 or (p30.KeyCode == Enum.KeyCode.ButtonA or p30.UserInputType == Enum.UserInputType.Touch) then
+		if isDragging == true then
+			isDragging = false
+		end
+	end
+end)
+local function deepClone(p31)
+	-- upvalues: (copy) deepClone
+	local v32 = table.clone(p31)
+	for v33, v34 in p31 do
+		if type(v34) == "table" then
+			v32[v33] = deepClone(v34)
+		end
+	end
+	return v32
+end
+local function saveSkillData()
+	-- upvalues: (copy) deepClone, (ref) skillData, (copy) lineItemSchema, (copy) defaultSkillProps, (copy) httpService, (ref) isCharacterMode, (copy) buildEvent, (copy) selectionHandler
+	local v36 = deepClone(skillData)
+	for v37, v38 in v36.Line do
+		if lineItemSchema[v38.K_NAME] then
+			for _, v39 in lineItemSchema[v38.K_NAME] do
+				if v38[v39[1]] == v39[3] then
+					v36.Line[v37][v39[1]] = nil
+				end
+			end
+		end
+	end
+	for _, v40 in v36.Req do
+		if lineItemSchema[v40.K_NAME] then
+			for _, v41 in lineItemSchema[v40.K_NAME] do
+				if v40[v41[1]] == v41[3] then
+					v40[v41[1]] = nil
+				end
+			end
+		end
+	end
+	for v42, v43 in v36.Prop do
+		if defaultSkillProps[v42] and v43 == defaultSkillProps[v42] then
+			v36.Prop[v42] = nil
+		end
+	end
+	if v36.Branch then
+		for v44, v45 in v36.Branch do
+			for v46, v47 in v45 do
+				if lineItemSchema[v47.K_NAME] then
+					for _, v48 in lineItemSchema[v47.K_NAME] do
+						if v47[v48[1]] == v48[3] then
+							v36.Branch[v44][v46][v48[1]] = nil
+						end
+					end
+				end
+			end
+		end
+	end
+	local v49 = httpService:JSONEncode(v36)
+	if isCharacterMode then
+		require(script.Parent.Character):updateSkillData(v49)
+	else
+		buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Dict", v49)
+	end
+end
+local builderPanel = script.Parent.Parent.Builder
+local isCharacterModeCopy = isCharacterMode
+local currentSkillData = skillData
+local isDraggingTimeline = isDragging
+local updateCallbacks = {}
+for _, v_u_56 in builderPanel.Category:GetChildren() do
+	if v_u_56:IsA("TextButton") then
+		v_u_56.MouseButton1Down:Connect(function()
+			-- upvalues: (copy) builderPanel, (copy) v_u_56, (copy) updateCallbacks
+			for _, v57 in builderPanel.Items:GetChildren() do
+				if v57:IsA("Frame") then
+					if v57.Name == v_u_56.Name then
+						v57.Visible = true
+						builderPanel.Category[v57.Name].Select.Visible = true
+					else
+						v57.Visible = false
+						builderPanel.Category[v57.Name].Select.Visible = false
+					end
+				end
+			end
+			table.clear(updateCallbacks)
+		end)
+	end
+end
+local function updateHitboxPreview(p58)
+	-- upvalues: (copy) builderPanel, (copy) builderGui, (copy) debrisService
+	local v_u_59 = builderPanel.Items.Timeline.Properties:FindFirstChild("Preview")
+	if v_u_59 then
+		if p58.POSITION ~= nil or p58.SIZE ~= nil then
+			local v60 = v_u_59:FindFirstChild("Rig")
+			if v60 then
+				v60:Destroy()
+				v_u_59.Drag:Destroy()
+			end
+			local v_u_61 = builderGui.Preset.Rig:Clone()
+			v_u_61.Parent = v_u_59
+			v_u_61:PivotTo(v_u_61:GetPivot() * CFrame.Angles(0, 1.5707963267948966, 0))
+			local v62 = string.split
+			local v63 = p58.POSITION
+			local v64 = unpack
+			local v65 = Vector3.new(v64(v62(v63)))
+			local v66 = string.split
+			local v67 = p58.ROTATION
+			local v68 = unpack
+			local v69 = Vector3.new(v68(v66(v67)))
+			local v70 = string.split
+			local v71 = p58.SIZE
+			local v72 = unpack
+			local v73 = Vector3.new(v72(v70(v71)))
+			local v_u_74 = CFrame.new(-v65.X, v65.Y, -v65.Z)
+			if v69 then
+				local v75 = CFrame.Angles
+				local v76 = v69.X
+				local v77 = math.rad(v76)
+				local v78 = v69.Y
+				local v79 = math.rad(v78)
+				local v80 = v69.Z
+				v_u_74 = v_u_74 * v75(v77, v79, (math.rad(v80)))
+			end
+			local v81 = v65.Y
+			local v82 = math.abs(v81) + v73.Y / 2
+			local v83 = v65.Z
+			local v84 = math.abs(v83) + v73.Z / 2
+			local v85 = math.max(v82, v84) * 2 + -43.5
+			local v_u_86 = Vector3.new(-7, 3, v85)
+			v_u_61.HumanoidRootPart.CFrame = CFrame.new(v_u_86) * CFrame.Angles(0, 1.5707963267948966, 0)
+			local v87 = v_u_59:FindFirstChild("Hitbox")
+			if v87 then
+				v87:Destroy()
+			end
+			local v_u_88 = Instance.new("Part")
+			v_u_88.Name = "Hitbox"
+			v_u_88.Anchored = true
+			v_u_88.CanCollide = false
+			v_u_88.CanQuery = false
+			v_u_88.CanTouch = false
+			v_u_88.Transparency = 0.5
+			v_u_88.Size = v73
+			v_u_88.Color = Color3.fromRGB(255, 0, 0)
+			v_u_88.Material = Enum.Material.SmoothPlastic
+			v_u_88.CFrame = v_u_61.HumanoidRootPart.CFrame * v_u_74
+			v_u_88.Parent = v_u_59
+			local v89 = Instance.new("Part")
+			v89.Name = "PreviewHitbox"
+			v89.Anchored = true
+			v89.CanCollide = false
+			v89.CanQuery = false
+			v89.CanTouch = false
+			v89.Transparency = 0.5
+			v89.CastShadow = false
+			v89.Size = v73
+			v89.Color = Color3.fromRGB(255, 0, 0)
+			v89.Material = Enum.Material.SmoothPlastic
+			v89.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame * v_u_74
+			v89.Parent = workspace.Effects
+			debrisService:AddItem(v89, 0.5)
+			local v_u_90 = Instance.new("TextButton")
+			v_u_90.TextTransparency = 1
+			v_u_90.BackgroundTransparency = 1
+			v_u_90.Size = UDim2.new(1, 0, 1, 0)
+			v_u_90.AnchorPoint = Vector2.new(0.5, 0.5)
+			v_u_90.Position = UDim2.new(0.5, 0, 0.5, 0)
+			v_u_90.Parent = v_u_59
+			v_u_90.Name = "Drag"
+			task.spawn(function()
+				-- upvalues: (copy) v_u_90, (ref) v_u_61, (copy) v_u_59, (copy) v_u_86, (ref) v_u_88, (ref) v_u_74
+				local v_u_91 = game:GetService("UserInputService")
+				local v92 = 0
+				local v93 = 0
+				local v_u_94 = false
+				local v_u_95 = Vector2.new(0, 0)
+				v_u_90.MouseButton1Down:Connect(function()
+					-- upvalues: (ref) v_u_94, (ref) v_u_95, (copy) v_u_91
+					v_u_94 = true
+					v_u_95 = v_u_91:GetMouseLocation()
+				end)
+				v_u_91.InputEnded:Connect(function(p96)
+					-- upvalues: (ref) v_u_94
+					if p96.UserInputType == Enum.UserInputType.MouseButton1 or p96.UserInputType == Enum.UserInputType.Touch then
+						v_u_94 = false
+					end
+				end)
+				local v97 = v_u_95
+				local v98 = v_u_94
+				while v_u_61.Parent and (v_u_59.Parent and v_u_90.Parent) do
+					if v98 then
+						local v99 = v_u_91:GetMouseLocation() - v97
+						v92 = v92 + v99.X * 0.5
+						local v100 = v93 - v99.Y * 0.5
+						v93 = math.clamp(v100, -80, 80)
+						v_u_95 = v_u_91:GetMouseLocation()
+						v97 = v_u_95
+					end
+					local v101 = v_u_91:GetGamepadState(Enum.UserInputType.Gamepad1)
+					for _, v102 in pairs(v101) do
+						if v102.KeyCode == Enum.KeyCode.Thumbstick2 then
+							local v103 = v102.Position.X
+							if math.abs(v103) > 0.1 then
+								v92 = v92 - v102.Position.X * 0.5
+								local v104 = v93 + v102.Position.Y * 0.5
+								v93 = math.clamp(v104, -80, 80)
+							end
+						end
+					end
+					local v105 = v_u_61.HumanoidRootPart
+					local v106 = CFrame.new(v_u_86)
+					local v107 = CFrame.Angles
+					local v108 = math.rad(v93)
+					local v109 = v92 + 90
+					v105.CFrame = v106 * v107(v108, math.rad(v109), 0)
+					v_u_88.CFrame = v_u_61.HumanoidRootPart.CFrame * v_u_74
+					task.wait()
+				end
+			end)
+		end
+	else
+		return
+	end
+end
+local function updateAnimPreview(p_u_111)
+	-- upvalues: (copy) builderPanel, (copy) builderGui, (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) activeAnimationTrack, (copy) emoteList, (copy) listData, (copy) saveSkillData
+	local v_u_112 = builderPanel.Items.Timeline.Properties:FindFirstChild("Preview")
+	if v_u_112 then
+		local v113 = v_u_112:FindFirstChild("Rig")
+		if v113 then
+			v113:Destroy()
+		end
+		local v_u_114 = builderGui.Preset.Rig:Clone()
+		v_u_114.Parent = v_u_112
+		v_u_112.Timeline.Visible = false
+		previewStartTime = nil
+		previewEndTime = nil
+		animationTotalLength = nil
+		activeAnimationTrack = nil
+		local v115 = p_u_111.ANIM_USE
+		local v116
+		if typeof(v115) == "string" then
+			script.Emote.AnimationId = emoteList[p_u_111.ANIM_USE]
+			v116 = script.Emote
+		else
+			v116 = listData.AnimList[p_u_111.ANIM_USE[1]][p_u_111.ANIM_USE[2]]
+		end
+		activeAnimationTrack = v_u_114.Humanoid:LoadAnimation(v116)
+		activeAnimationTrack:Play(0, nil, p_u_111.SPEED)
+		activeAnimationTrack.TimePosition = p_u_111.SPEED <= 0 and p_u_111.PREVIEW[2] or p_u_111.PREVIEW[1]
+		task.spawn(function()
+			-- upvalues: (ref) activeAnimationTrack, (copy) v_u_112, (ref) previewEndTime, (copy) p_u_111, (ref) previewStartTime, (ref) animationTotalLength, (ref) saveSkillData, (ref) v_u_114
+			local v117 = false
+			while true do
+				if activeAnimationTrack.Length > 0 and v117 == false then
+					v117 = true
+					v_u_112.Timeline.Visible = true
+					local v118 = p_u_111.PREVIEW[2]
+					local v119 = activeAnimationTrack.Length
+					previewEndTime = math.clamp(v118, 0, v119)
+					local v120 = p_u_111.PREVIEW[1]
+					local v121 = p_u_111.PREVIEW[2]
+					previewStartTime = math.clamp(v120, 0, v121)
+					animationTotalLength = activeAnimationTrack.Length
+					v_u_112.Timeline.PullStart.Position = UDim2.new(previewStartTime / activeAnimationTrack.Length, 0, 1, 0)
+					v_u_112.Timeline.PullEnd.Position = UDim2.new(previewEndTime / activeAnimationTrack.Length, 0, 1, 0)
+					v_u_112.Timeline.Time.Position = v_u_112.Timeline.PullStart.Position - UDim2.new(0, 0, 1, 0)
+					v_u_112.Timeline.Time.Size = UDim2.new(v_u_112.Timeline.PullEnd.Position.X.Scale - v_u_112.Timeline.PullStart.Position.X.Scale, 0, 1, 0)
+					local v122 = v_u_112.Timeline.PullStart.Time
+					local v123 = previewStartTime * 100
+					v122.Text = math.floor(v123) / 100
+					local v124 = v_u_112.Timeline.PullEnd.Time
+					local v125 = previewEndTime * 100
+					v124.Text = math.floor(v125) / 100
+					if p_u_111.PREVIEW[2] ~= previewEndTime or p_u_111.PREVIEW[1] ~= previewStartTime then
+						p_u_111.PREVIEW[1] = previewStartTime
+						p_u_111.PREVIEW[2] = previewEndTime
+						saveSkillData()
+					end
+				end
+				if p_u_111.SPEED >= 0 then
+					if activeAnimationTrack.TimePosition >= p_u_111.PREVIEW[2] or not activeAnimationTrack.IsPlaying then
+						activeAnimationTrack:Play(0, nil, p_u_111.SPEED)
+						activeAnimationTrack.TimePosition = p_u_111.PREVIEW[1]
+					end
+				elseif activeAnimationTrack.TimePosition <= p_u_111.PREVIEW[1] or not activeAnimationTrack.IsPlaying then
+					activeAnimationTrack:Play(0, nil, p_u_111.SPEED)
+					activeAnimationTrack.TimePosition = p_u_111.PREVIEW[2]
+				end
+				task.wait()
+				if not (v_u_112.Parent and v_u_114.Parent) then
+					return
+				end
+			end
+		end)
+	end
+end
+local function getLineButtonByIndex(p127)
+	-- upvalues: (copy) builderPanel, (ref) selectedLineIndex
+	local v128 = nil
+	for _, v129 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+		if v129:IsA("TextButton") and v129.LayoutOrder == (p127 or selectedLineIndex) then
+			return v129
+		end
+	end
+	return v128
+end
+local function getConditionButtonByIndex(p131)
+	-- upvalues: (copy) builderPanel, (ref) selectedConditionIndex
+	local v132 = nil
+	for _, v133 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+		if v133:IsA("TextButton") and v133.LayoutOrder == (p131 or selectedConditionIndex) then
+			return v133
+		end
+	end
+	return v132
+end
+local function updateButtonLabel(p135, p136, p137)
+	-- upvalues: (copy) fieldKeyMap, (copy) listData, (copy) saveSkillData, (copy) updateCallbacks
+	local v138 = fieldKeyMap[p137.K_NAME]
+	if v138 == "ANIM_USE" and p137[v138] then
+		local v139 = p137[v138]
+		if typeof(v139) == "table" then
+			p135.Text = "[" .. listData.AnimList[p137[v138][1]][p137[v138][2]].Name .. "] " .. p136
+			::l5::
+			saveSkillData()
+			for _, v140 in pairs(updateCallbacks) do
+				v140(p137)
+			end
+			return
+		end
+	end
+	local v141 = p137[v138]
+	p135.Text = "[" .. tostring(v141) .. "] " .. p136
+	goto l5
+end
+local function refreshLineProperties()
+	-- upvalues: (copy) builderPanel, (copy) updateCallbacks, (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) activeAnimationTrack, (ref) selectedLineIndex, (ref) currentLineEntries, (copy) getLineButtonByIndex, (copy) lineItemSchema, (copy) builderGui, (copy) setToggleVisual, (copy) updateButtonLabel, (copy) listData, (copy) updateAnimPreview, (copy) emoteList, (copy) builderFX, (copy) localPlayer, (ref) isDraggingTimeline, (copy) saveSkillData, (copy) updateHitboxPreview
+	for _, v143 in builderPanel.Items.Timeline.Properties:GetChildren() do
+		if not v143:IsA("UIListLayout") then
+			v143:Destroy()
+		end
+	end
+	table.clear(updateCallbacks)
+	previewStartTime = nil
+	previewEndTime = nil
+	animationTotalLength = nil
+	activeAnimationTrack = nil
+	if selectedLineIndex and currentLineEntries[selectedLineIndex] then
+		builderPanel.Items.Timeline.Properties.Visible = true
+		builderPanel.Items.Timeline.Items.Visible = false
+		builderPanel.Toolbar.Visible = true
+		builderPanel.Toolbar2.Visible = false
+		for _, v144 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+			if v144:IsA("TextButton") then
+				if v144.LayoutOrder == selectedLineIndex then
+					v144.BorderColor3 = Color3.fromRGB(85, 255, 255)
+				else
+					v144.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				end
+			end
+		end
+		local v_u_145 = getLineButtonByIndex()
+		local v_u_146 = builderPanel.Items.Timeline.Items[v_u_145.Name].Text
+		local v_u_147 = currentLineEntries[selectedLineIndex]
+		for v148, v149 in lineItemSchema[v_u_147.K_NAME] do
+			local v_u_150 = v149[1]
+			if v149[2] == 1 then
+				local v_u_151 = builderGui.Preset.OptionBool:Clone()
+				v_u_151.Option.Text = v_u_150
+				v_u_151.LayoutOrder = v148
+				setToggleVisual(v_u_151, v_u_147[v_u_150] == true)
+				v_u_151.Parent = builderPanel.Items.Timeline.Properties
+				v_u_151.Toggle.Side.MouseButton1Down:Connect(function()
+					-- upvalues: (copy) v_u_147, (copy) v_u_150, (ref) setToggleVisual, (copy) v_u_151, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+					v_u_147[v_u_150] = v_u_147[v_u_150] ~= true
+					setToggleVisual(v_u_151, v_u_147[v_u_150] == true)
+					updateButtonLabel(v_u_145, v_u_146, v_u_147)
+				end)
+			elseif v149[2] == 2 then
+				local v_u_152 = builderGui.Preset.OptionText:Clone()
+				v_u_152.Option.Text = v_u_150
+				v_u_152.LayoutOrder = v148
+				local v153 = v_u_152.TextBox
+				local v154 = v_u_147[v_u_150]
+				v153.Text = tostring(v154)
+				v_u_152.Parent = builderPanel.Items.Timeline.Properties
+				v_u_152.TextBox.FocusLost:Connect(function()
+					-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_152, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146, (ref) activeAnimationTrack
+					local v155 = v_u_147
+					local v156 = v_u_150
+					local v157 = v_u_152.TextBox.Text
+					v155[v156] = tonumber(v157)
+					updateButtonLabel(v_u_145, v_u_146, v_u_147)
+					if v_u_150 == "SPEED" and v_u_147.K_NAME == "ANIM" then
+						activeAnimationTrack:Play(0, nil, v_u_147.SPEED)
+					end
+				end)
+				v_u_152.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+					-- upvalues: (copy) v_u_152
+					v_u_152.TextBox:ReleaseFocus()
+				end)
+			elseif v149[2] == 3 then
+				local v_u_158 = builderGui.Preset.ScrollOptions:Clone()
+				v_u_158.LayoutOrder = v148
+				v_u_158.Parent = builderPanel.Items.Timeline.Properties
+				if v_u_150 == "MOVE" then
+					local v159 = 1
+					local v160 = builderGui.Preset.Button:Clone()
+					v160.LayoutOrder = v159
+					v160.Name = "Cancel"
+					v160.Parent = v_u_158
+					v160.Text = "Cancel"
+					local v_u_161 = v160
+					v_u_161.MouseButton1Down:Connect(function()
+						-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_161, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+						v_u_147[v_u_150] = v_u_161.Name
+						updateButtonLabel(v_u_145, v_u_146, v_u_147)
+					end)
+					for v162, v163 in listData.MoveList do
+						local v164 = v159 + 2
+						local v_u_165 = builderPanel.Parent.Preset.Category:Clone()
+						v_u_165.Parent = v_u_158
+						v_u_165.LayoutOrder = v164
+						for v166 = 2, #v163 do
+							local v167 = v163[v166]
+							local v_u_168 = builderGui.Preset.Button:Clone()
+							v_u_168.LayoutOrder = v164
+							v_u_168.Name = v167
+							v_u_168.Parent = v_u_165
+							v_u_168.Text = v167
+							v_u_168.BackgroundColor3 = v163[1][2]
+							v_u_168.MouseButton1Down:Connect(function()
+								-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_168, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+								v_u_147[v_u_150] = v_u_168.Name
+								updateButtonLabel(v_u_145, v_u_146, v_u_147)
+							end)
+						end
+						v159 = v164 - 1
+						local v169 = listData.MoveList[v162][1][1]
+						local v170 = builderGui.Preset.Button:Clone()
+						v170.LayoutOrder = v159
+						v170.Name = v169
+						v170.Parent = v_u_158
+						v170.Text = v169
+						v170.BackgroundColor3 = listData.MoveList[v162][1][2]
+						v170.MouseButton1Down:Connect(function()
+							-- upvalues: (copy) v_u_165
+							v_u_165.Visible = not v_u_165.Visible
+						end)
+					end
+				elseif v_u_150 == "SPEC" then
+					for v171, v172 in listData.SpecialList do
+						local v_u_173 = builderGui.Preset.Button:Clone()
+						v_u_173.LayoutOrder = v172
+						v_u_173.Name = v171
+						v_u_173.Parent = v_u_158
+						v_u_173.Text = v171
+						v_u_173.LayoutOrder = v172
+						v_u_173.BackgroundColor3 = listData.MoveList[v172][1][2]
+						v_u_173.MouseButton1Down:Connect(function()
+							-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_173, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							v_u_147[v_u_150] = v_u_173.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+					end
+				elseif v_u_150 == "ANIM_USE" then
+					local v_u_174 = builderPanel.Parent.Preset.Search:Clone()
+					v_u_174.LayoutOrder = v148
+					v_u_174.Parent = builderPanel.Items.Timeline.Properties
+					local v175 = 0 + 1
+					local v_u_176 = {}
+					v_u_174:GetPropertyChangedSignal("Text"):Connect(function()
+						-- upvalues: (copy) v_u_158, (copy) v_u_176, (copy) v_u_174
+						v_u_158.CanvasPosition = Vector2.zero
+						for _, v177 in ipairs(v_u_176) do
+							if v_u_174.Text == "" then
+								v177.folder.Visible = true
+								v177.category.Visible = false
+								for _, v178 in pairs(v177.moves) do
+									v178.Visible = true
+								end
+							else
+								local v179 = false
+								for _, v180 in pairs(v177.moves) do
+									v180.Visible = v180.Name:lower():find(v_u_174.Text:lower())
+									if v180.Visible then
+										v179 = true
+									end
+								end
+								v177.folder.Visible = v179
+								v177.category.Visible = v179
+							end
+						end
+					end)
+					for v_u_181, v182 in listData.AnimList do
+						local v183 = v175 + 2
+						local v_u_184 = builderPanel.Parent.Preset.Category:Clone()
+						v_u_184.Parent = v_u_158
+						v_u_184.LayoutOrder = v183
+						local v185 = {}
+						for v_u_186 = 1, #v182 do
+							local v187 = v182[v_u_186].Name
+							local v188 = builderGui.Preset.Button:Clone()
+							v188.LayoutOrder = v_u_186
+							v188.Name = v187
+							v188.Parent = v_u_184
+							v188.Text = v187
+							v188.BackgroundColor3 = listData.MoveList[v_u_181][1][2]
+							v188.MouseButton1Down:Connect(function()
+								-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_181, (copy) v_u_186, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146, (ref) updateAnimPreview
+								v_u_147[v_u_150] = { v_u_181, v_u_186 }
+								v_u_147.PREVIEW = { 0, 15 }
+								updateButtonLabel(v_u_145, v_u_146, v_u_147)
+								updateAnimPreview(v_u_147)
+							end)
+							table.insert(v185, v188)
+						end
+						v175 = v183 - 1
+						local v189 = listData.MoveList[v_u_181][1][1]
+						local v190 = builderGui.Preset.Button:Clone()
+						v190.LayoutOrder = v175
+						v190.Name = v189
+						v190.Parent = v_u_158
+						v190.Text = v189
+						v190.BackgroundColor3 = listData.MoveList[v_u_181][1][2]
+						v190.MouseButton1Down:Connect(function()
+							-- upvalues: (copy) v_u_184
+							v_u_184.Visible = not v_u_184.Visible
+						end)
+						table.insert(v_u_176, {
+							["category"] = v_u_184,
+							["folder"] = v190,
+							["moves"] = v185
+						})
+					end
+					local v191 = v175 + 2
+					local v_u_192 = builderPanel.Parent.Preset.Category:Clone()
+					v_u_192.Parent = v_u_158
+					v_u_192.LayoutOrder = v191
+					local v193 = {}
+					local v194 = 0
+					for v_u_195, _ in emoteList do
+						v194 = v194 + 1
+						local v196 = builderGui.Preset.Button:Clone()
+						v196.LayoutOrder = v194
+						v196.Name = v_u_195
+						v196.Parent = v_u_192
+						v196.Text = v_u_195
+						v196.MouseButton1Down:Connect(function()
+							-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_195, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146, (ref) updateAnimPreview
+							v_u_147[v_u_150] = v_u_195
+							v_u_147.PREVIEW = { 0, 15 }
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+							updateAnimPreview(v_u_147)
+						end)
+						table.insert(v193, v196)
+					end
+					local v197 = v191 - 1
+					local v198 = builderGui.Preset.Button:Clone()
+					v198.LayoutOrder = v197
+					v198.Name = "EMOTES"
+					v198.Parent = v_u_158
+					v198.Text = "EMOTES"
+					v198.MouseButton1Down:Connect(function()
+						-- upvalues: (copy) v_u_192
+						v_u_192.Visible = not v_u_192.Visible
+					end)
+					table.insert(v_u_176, {
+						["category"] = v_u_192,
+						["folder"] = v198,
+						["moves"] = v193
+					})
+				elseif v_u_150 == "ATTACK TYPE" then
+					local v199 = builderGui.Preset.TextLabel:Clone()
+					v199.Text = "ATTACK TYPE"
+					v199.LayoutOrder = v148 - 1
+					v199.TextXAlignment = Enum.TextXAlignment.Center
+					v199.Parent = builderPanel.Items.Timeline.Properties
+					local v200 = 1
+					local v_u_201 = nil
+					for _, v202 in listData.AttackTypes do
+						local v_u_203 = builderGui.Preset.Button:Clone()
+						v_u_203.LayoutOrder = v200
+						v_u_203.Name = v202
+						v_u_203.Parent = v_u_158
+						v_u_203.Text = v202
+						if v202 == v_u_147[v_u_150] then
+							v_u_203.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_201 = v_u_203
+						end
+						v_u_203.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_201, (copy) v_u_203, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_201 and v_u_201 ~= v_u_203 then
+								v_u_201.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_201 = v_u_203
+							v_u_203.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_203.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v200 = v200 + 1
+					end
+				elseif v_u_150 == "ATTACK TYPE2" then
+					local v204 = builderGui.Preset.TextLabel:Clone()
+					v204.Text = "ATTACK TYPE"
+					v204.LayoutOrder = v148 - 1
+					v204.TextXAlignment = Enum.TextXAlignment.Center
+					v204.Parent = builderPanel.Items.Timeline.Properties
+					local v205 = 1
+					local v_u_206 = {}
+					for _, v207 in listData.AttackTypes do
+						local v_u_208 = builderGui.Preset.Button:Clone()
+						v_u_208.LayoutOrder = v205
+						v_u_208.Name = v207
+						v_u_208.Parent = v_u_158
+						v_u_208.Text = v207
+						if v_u_147[v_u_150] then
+							for v209 in v_u_147[v_u_150]:gmatch("[^,]+") do
+								if v209 == v_u_208.Name then
+									v_u_206[v_u_208] = true
+									v_u_208.BorderColor3 = Color3.fromRGB(85, 255, 255)
+								end
+							end
+						end
+						v_u_208.MouseButton1Down:Connect(function()
+							-- upvalues: (copy) v_u_206, (copy) v_u_208, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_206[v_u_208] then
+								v_u_206[v_u_208] = nil
+								v_u_208.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							else
+								v_u_206[v_u_208] = true
+								v_u_208.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							end
+							local v210 = {}
+							for v211 in pairs(v_u_206) do
+								local v212 = v211.Name
+								table.insert(v210, v212)
+							end
+							v_u_147[v_u_150] = table.concat(v210, ",")
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v205 = v205 + 1
+					end
+				elseif v_u_150 == "EFFECT" then
+					local v213 = builderGui.Preset.TextLabel:Clone()
+					v213.Text = "EFFECT"
+					v213.LayoutOrder = v148 - 1
+					v213.TextXAlignment = Enum.TextXAlignment.Center
+					v213.Parent = builderPanel.Items.Timeline.Properties
+					local v_u_214 = nil
+					local v215 = 1
+					if builderFX.Cancel then
+						local v_u_216 = builderGui.Preset.Button:Clone()
+						v_u_216.LayoutOrder = v215
+						v_u_216.Name = "Cancel"
+						v_u_216.Parent = v_u_158
+						v_u_216.Text = "Cancel"
+						if v_u_147[v_u_150] == "Cancel" then
+							v_u_216.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_214 = v_u_216
+						end
+						v_u_216.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_214, (copy) v_u_216, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_214 and v_u_214 ~= v_u_216 then
+								v_u_214.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_214 = v_u_216
+							v_u_216.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_216.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v215 = v215 + 1
+					end
+					for v217, _ in builderFX do
+						if v217 ~= "Cancel" then
+							local v_u_218 = builderGui.Preset.Button:Clone()
+							v_u_218.LayoutOrder = v215
+							v_u_218.Name = v217
+							v_u_218.Parent = v_u_158
+							v_u_218.Text = v217
+							if v217 == v_u_147[v_u_150] then
+								v_u_214 = v_u_218
+								v_u_218.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							end
+							v_u_218.MouseButton1Down:Connect(function()
+								-- upvalues: (ref) v_u_214, (copy) v_u_218, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+								if v_u_214 and v_u_214 ~= v_u_218 then
+									v_u_214.BorderColor3 = Color3.fromRGB(0, 0, 0)
+								end
+								v_u_214 = v_u_218
+								v_u_218.BorderColor3 = Color3.fromRGB(85, 255, 255)
+								v_u_147[v_u_150] = v_u_218.Name
+								updateButtonLabel(v_u_145, v_u_146, v_u_147)
+							end)
+							v215 = v215 + 1
+						end
+					end
+					local v219 = updateCallbacks
+					local function v222(p_u_220)
+						-- upvalues: (ref) localPlayer
+						if p_u_220.EFFECT then
+							local v_u_221 = require(game.ReplicatedStorage.Modules.BuilderFX)
+							pcall(function()
+								-- upvalues: (copy) v_u_221, (copy) p_u_220, (ref) localPlayer
+								v_u_221[p_u_220.EFFECT](localPlayer.Character, p_u_220)
+							end)
+						end
+					end
+					table.insert(v219, v222)
+				elseif v_u_150 == "BODY PART" or v_u_150 == "BODY PART2" then
+					local v223 = builderGui.Preset.TextLabel:Clone()
+					v223.Text = v_u_150 == "BODY PART" and "LIMB" or "TARGET LIMB"
+					v223.LayoutOrder = v148 - 1
+					v223.TextXAlignment = Enum.TextXAlignment.Center
+					v223.Parent = builderPanel.Items.Timeline.Properties
+					local v224 = 1
+					local v_u_225 = nil
+					for _, v226 in {
+						"HumanoidRootPart",
+						"Head",
+						"Torso",
+						"Right Arm",
+						"Left Arm",
+						"Right Leg",
+						"Left Leg"
+						} do
+						local v_u_227 = builderGui.Preset.Button:Clone()
+						v_u_227.LayoutOrder = v224
+						v_u_227.Name = v226
+						v_u_227.Parent = v_u_158
+						v_u_227.Text = v226
+						if v226 == v_u_147[v_u_150] then
+							v_u_227.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_225 = v_u_227
+						end
+						v_u_227.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_225, (copy) v_u_227, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_225 and v_u_225 ~= v_u_227 then
+								v_u_225.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_225 = v_u_227
+							v_u_227.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_227.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v224 = v224 + 1
+					end
+				elseif v_u_150 == "EASING STYLE" then
+					local v228 = builderGui.Preset.TextLabel:Clone()
+					v228.Text = "EASING STYLE"
+					v228.LayoutOrder = v148 - 1
+					v228.TextXAlignment = Enum.TextXAlignment.Center
+					v228.Parent = builderPanel.Items.Timeline.Properties
+					local v229 = 1
+					local v_u_230 = nil
+					for _, v231 in {
+						"Linear",
+						"Sine",
+						"Quad",
+						"Cubic",
+						"Exponential",
+						"Back"
+						} do
+						local v_u_232 = builderGui.Preset.Button:Clone()
+						v_u_232.LayoutOrder = v229
+						v_u_232.Name = v231
+						v_u_232.Parent = v_u_158
+						v_u_232.Text = v231
+						if v231 == v_u_147[v_u_150] then
+							v_u_232.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_230 = v_u_232
+						end
+						v_u_232.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_230, (copy) v_u_232, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_230 and v_u_230 ~= v_u_232 then
+								v_u_230.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_230 = v_u_232
+							v_u_232.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_232.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v229 = v229 + 1
+					end
+				elseif v_u_150 == "EASING DIRECTION" then
+					local v233 = builderGui.Preset.TextLabel:Clone()
+					v233.Text = "EASING DIRECTION"
+					v233.LayoutOrder = v148 - 1
+					v233.TextXAlignment = Enum.TextXAlignment.Center
+					v233.Parent = builderPanel.Items.Timeline.Properties
+					local v234 = 1
+					local v_u_235 = nil
+					for _, v236 in { "In", "Out", "InOut" } do
+						local v_u_237 = builderGui.Preset.Button:Clone()
+						v_u_237.LayoutOrder = v234
+						v_u_237.Name = v236
+						v_u_237.Parent = v_u_158
+						v_u_237.Text = v236
+						if v236 == v_u_147[v_u_150] then
+							v_u_237.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_235 = v_u_237
+						end
+						v_u_237.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_235, (copy) v_u_237, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_235 and v_u_235 ~= v_u_237 then
+								v_u_235.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_235 = v_u_237
+							v_u_237.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_237.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v234 = v234 + 1
+					end
+				elseif v_u_150 == "STATE" then
+					local v238 = builderGui.Preset.TextLabel:Clone()
+					v238.Text = "STATE"
+					v238.LayoutOrder = v148 - 1
+					v238.TextXAlignment = Enum.TextXAlignment.Center
+					v238.Parent = builderPanel.Items.Timeline.Properties
+					local v239 = 1
+					local v_u_240 = nil
+					for _, v241 in listData.States do
+						local v_u_242 = builderGui.Preset.Button:Clone()
+						v_u_242.LayoutOrder = v239
+						v_u_242.Name = v241
+						v_u_242.Parent = v_u_158
+						v_u_242.Text = v241
+						if v241 == v_u_147[v_u_150] then
+							v_u_242.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_240 = v_u_242
+						end
+						v_u_242.MouseButton1Down:Connect(function()
+							-- upvalues: (ref) v_u_240, (copy) v_u_242, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+							if v_u_240 and v_u_240 ~= v_u_242 then
+								v_u_240.BorderColor3 = Color3.fromRGB(0, 0, 0)
+							end
+							v_u_240 = v_u_242
+							v_u_242.BorderColor3 = Color3.fromRGB(85, 255, 255)
+							v_u_147[v_u_150] = v_u_242.Name
+							updateButtonLabel(v_u_145, v_u_146, v_u_147)
+						end)
+						v239 = v239 + 1
+					end
+				else
+					v_u_158:Destroy()
+					local v_u_243 = builderGui.Preset.OptionText:Clone()
+					v_u_243.Option.Text = v_u_150
+					v_u_243.LayoutOrder = v148
+					local v244 = v_u_243.TextBox
+					local v245 = v_u_147[v_u_150]
+					v244.Text = tostring(v245)
+					v_u_243.Parent = builderPanel.Items.Timeline.Properties
+					v_u_243.TextBox.FocusLost:Connect(function()
+						-- upvalues: (copy) v_u_147, (copy) v_u_150, (copy) v_u_243, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+						local v246 = v_u_147
+						local v247 = v_u_150
+						local v248 = v_u_243.TextBox.Text
+						v246[v247] = tostring(v248)
+						updateButtonLabel(v_u_145, v_u_146, v_u_147)
+					end)
+					v_u_243.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+						-- upvalues: (copy) v_u_243
+						v_u_243.TextBox:ReleaseFocus()
+					end)
+				end
+			elseif v149[2] == 4 then
+				local v_u_249 = builderGui.Preset.Preview:Clone()
+				v_u_249.LayoutOrder = v148
+				v_u_249.Parent = builderPanel.Items.Timeline.Properties
+				updateAnimPreview(v_u_147)
+				v_u_249.Timeline.PullStart.Time.Visible = true
+				v_u_249.Timeline.PullEnd.Time.Visible = true
+				v_u_249.Timeline.PullStart.Key.MouseButton1Down:Connect(function()
+					-- upvalues: (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) isDraggingTimeline, (copy) v_u_249, (ref) localPlayer, (ref) activeAnimationTrack, (copy) v_u_147, (ref) saveSkillData
+					if not (previewStartTime and (previewEndTime and animationTotalLength)) then
+						return
+					end
+					if isDraggingTimeline == true then
+						return
+					end
+					isDraggingTimeline = true
+					v_u_249.Timeline.PullStart.Time.Visible = true
+					local v250 = localPlayer:GetMouse()
+					local v251 = Vector2.new(v250.X, v250.Y)
+					while true do
+						if v251 and (v251 - Vector2.new(v250.X, v250.Y)).Magnitude < 2 then
+							task.wait()
+						else
+							v251 = nil
+							local v252 = v_u_249.Timeline.AbsolutePosition
+							local v253 = v_u_249.Timeline.AbsoluteSize
+							local v254 = v252.X
+							local v255 = v252.X + v253.X
+							local v256 = (v250.X - v254) / (v255 - v254)
+							local v257 = animationTotalLength * (1 - (1 - math.clamp(v256, 0, 1)))
+							local v258 = previewEndTime
+							local v259 = math.clamp(v257, 0, v258)
+							previewStartTime = v259
+							v_u_249.Timeline.PullStart.Position = UDim2.new(v259 / animationTotalLength, 0, 1, 0)
+							v_u_249.Timeline.Time.Position = v_u_249.Timeline.PullStart.Position - UDim2.new(0, 0, 1, 0)
+							v_u_249.Timeline.Time.Size = UDim2.new(v_u_249.Timeline.PullEnd.Position.X.Scale - v_u_249.Timeline.PullStart.Position.X.Scale, 0, 1, 0)
+							local v260 = v_u_249.Timeline.PullStart.Time
+							local v261 = previewStartTime * 100
+							v260.Text = math.floor(v261) / 100
+							activeAnimationTrack:Play(0, nil, v_u_147.SPEED)
+							activeAnimationTrack.TimePosition = previewStartTime
+							task.wait()
+						end
+						if isDraggingTimeline == false or not (v_u_249.Parent and (previewStartTime and (previewEndTime and animationTotalLength))) then
+							isDraggingTimeline = false
+							if v_u_249.Parent and (previewStartTime and (previewEndTime and animationTotalLength)) then
+								v_u_147.PREVIEW[1] = previewStartTime
+								v_u_147.PREVIEW[2] = previewEndTime
+								saveSkillData()
+							end
+							return
+						end
+					end
+				end)
+				v_u_249.Timeline.PullEnd.Key.MouseButton1Down:Connect(function()
+					-- upvalues: (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) isDraggingTimeline, (copy) v_u_249, (ref) localPlayer, (ref) activeAnimationTrack, (copy) v_u_147, (ref) saveSkillData
+					if not (previewStartTime and (previewEndTime and animationTotalLength)) then
+						return
+					end
+					if isDraggingTimeline == true then
+						return
+					end
+					isDraggingTimeline = true
+					v_u_249.Timeline.PullEnd.Time.Visible = true
+					local v262 = localPlayer:GetMouse()
+					local v263 = Vector2.new(v262.X, v262.Y)
+					while true do
+						if v263 and (v263 - Vector2.new(v262.X, v262.Y)).Magnitude < 2 then
+							task.wait()
+						else
+							v263 = nil
+							local v264 = v_u_249.Timeline.AbsolutePosition
+							local v265 = v_u_249.Timeline.AbsoluteSize
+							local v266 = v264.X
+							local v267 = v264.X + v265.X
+							local v268 = (v262.X - v266) / (v267 - v266)
+							local v269 = animationTotalLength * (1 - (1 - math.clamp(v268, 0, 1)))
+							local v270 = previewStartTime
+							local v271 = animationTotalLength
+							local v272 = math.clamp(v269, v270, v271)
+							previewEndTime = v272
+							v_u_249.Timeline.PullEnd.Position = UDim2.new(v272 / animationTotalLength, 0, 1, 0)
+							v_u_249.Timeline.Time.Position = v_u_249.Timeline.PullStart.Position - UDim2.new(0, 0, 1, 0)
+							v_u_249.Timeline.Time.Size = UDim2.new(v_u_249.Timeline.PullEnd.Position.X.Scale - v_u_249.Timeline.PullStart.Position.X.Scale, 0, 1, 0)
+							local v273 = v_u_249.Timeline.PullEnd.Time
+							local v274 = previewEndTime * 100
+							v273.Text = math.floor(v274) / 100
+							activeAnimationTrack:Play(0, nil, v_u_147.SPEED)
+							activeAnimationTrack.TimePosition = previewEndTime
+							task.wait()
+						end
+						if isDraggingTimeline == false or not (v_u_249.Parent and (previewStartTime and (previewEndTime and animationTotalLength))) then
+							isDraggingTimeline = false
+							if v_u_249.Parent and (previewStartTime and (previewEndTime and animationTotalLength)) then
+								v_u_147.PREVIEW[1] = previewStartTime
+								v_u_147.PREVIEW[2] = previewEndTime
+								saveSkillData()
+							end
+							return
+						end
+					end
+				end)
+			elseif v149[2] == 5 then
+				local v_u_275 = builderGui.Preset.OptionText:Clone()
+				v_u_275.Option.Text = v_u_150
+				v_u_275.LayoutOrder = v148
+				local v276 = v_u_275.TextBox
+				local v277 = v_u_147[v_u_150]
+				v276.Text = tostring(v277)
+				v_u_275.Parent = builderPanel.Items.Timeline.Properties
+				v_u_275.TextBox.FocusLost:Connect(function()
+					-- upvalues: (copy) v_u_275, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+					local v278 = string.split
+					local v279 = v_u_275.TextBox.Text
+					local v280 = unpack
+					local v281 = Vector3.new(v280(v278(v279)))
+					local function v283(p282)
+						if math.abs(p282) < 0.001 and p282 ~= 0 then
+							p282 = 0.001 * (p282 > 0 and 1 or -1)
+						end
+						if math.floor(p282) == p282 then
+							return tostring(p282)
+						else
+							return string.format("%.3f", p282):gsub("%.?0+$", "")
+						end
+					end
+					v_u_147[v_u_150] = v283(v281.X) .. ", " .. v283(v281.Y) .. ", " .. v283(v281.Z)
+					v_u_275.TextBox.Text = v_u_147[v_u_150]
+					updateButtonLabel(v_u_145, v_u_146, v_u_147)
+				end)
+				v_u_275.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+					-- upvalues: (copy) v_u_275
+					v_u_275.TextBox:ReleaseFocus()
+				end)
+			elseif v149[2] == 6 then
+				local v_u_284 = builderGui.Preset.OptionText:Clone()
+				v_u_284.Option.Text = v_u_150
+				v_u_284.LayoutOrder = v148
+				local v285 = v_u_284.TextBox
+				local v286 = v_u_147[v_u_150]
+				v285.Text = tostring(v286)
+				local v287 = v_u_284.TextBox
+				local v288 = Color3.fromRGB
+				local v289 = string.split
+				local v290 = v_u_284.TextBox.Text
+				v287.BackgroundColor3 = v288(unpack(v289(v290)))
+				v_u_284.Parent = builderPanel.Items.Timeline.Properties
+				v_u_284.TextBox.FocusLost:Connect(function()
+					-- upvalues: (copy) v_u_284, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+					local v291 = Color3.fromRGB
+					local v292 = string.split
+					local v293 = v_u_284.TextBox.Text
+					local v_u_294 = v291(unpack(v292(v293)))
+					v_u_147[v_u_150] = string.gsub("R, G, B", "%u", function(p295)
+						-- upvalues: (copy) v_u_294
+						local v296 = v_u_294[p295] * 255
+						local v297 = math.round(v296)
+						return tostring(v297)
+					end)
+					v_u_284.TextBox.BackgroundColor3 = v_u_294
+					v_u_284.TextBox.Text = v_u_147[v_u_150]
+					updateButtonLabel(v_u_145, v_u_146, v_u_147)
+				end)
+				v_u_284.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+					-- upvalues: (copy) v_u_284
+					v_u_284.TextBox:ReleaseFocus()
+				end)
+			elseif v149[2] == 7 then
+				local v298 = builderGui.Preset.Preview:Clone()
+				v298.LayoutOrder = v148
+				v298.Parent = builderPanel.Items.Timeline.Properties
+				updateHitboxPreview(v_u_147)
+				local v299 = updateCallbacks
+				local function v300()
+					-- upvalues: (ref) updateHitboxPreview, (copy) v_u_147
+					updateHitboxPreview(v_u_147)
+				end
+				table.insert(v299, v300)
+			elseif v149[2] == 8 then
+				local v_u_301 = builderGui.Preset.OptionText:Clone()
+				v_u_301.Option.Text = v_u_150
+				v_u_301.LayoutOrder = v148
+				local v302 = v_u_301.TextBox
+				local v303 = v_u_147[v_u_150]
+				local v304
+				if tostring(v303) == "nil" then
+					v304 = ""
+				else
+					local v305 = v_u_147[v_u_150]
+					v304 = tostring(v305) or ""
+				end
+				v302.Text = v304
+				v_u_301.Parent = builderPanel.Items.Timeline.Properties
+				v_u_301.TextBox.PlaceholderText = "A, B, C"
+				v_u_301.TextBox.FocusLost:Connect(function()
+					-- upvalues: (copy) v_u_301, (ref) builderPanel, (copy) v_u_147, (copy) v_u_150, (ref) updateButtonLabel, (copy) v_u_145, (copy) v_u_146
+					local v306 = {}
+					for _, v307 in string.split(v_u_301.TextBox.Text) do
+						if string.gsub(v307, " ", "") ~= "" and builderPanel.Branch:FindFirstChild(v307) then
+							table.insert(v306, v307)
+						end
+					end
+					v_u_147[v_u_150] = table.concat(v306, ", ")
+					v_u_301.TextBox.Text = v_u_147[v_u_150]
+					updateButtonLabel(v_u_145, v_u_146, v_u_147)
+				end)
+				v_u_301.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+					-- upvalues: (copy) v_u_301
+					v_u_301.TextBox:ReleaseFocus()
+				end)
+			end
+		end
+	else
+		builderPanel.Items.Timeline.Properties.Visible = false
+		builderPanel.Items.Timeline.Items.Visible = true
+		builderPanel.Toolbar.Visible = false
+		builderPanel.Toolbar2.Visible = true
+		for _, v308 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+			if v308:IsA("TextButton") then
+				v308.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			end
+		end
+	end
+end
+local function refreshConditionProperties()
+	-- upvalues: (copy) builderPanel, (ref) selectedConditionIndex, (ref) currentConditionEntries, (copy) getConditionButtonByIndex, (copy) lineItemSchema, (copy) builderGui, (copy) setToggleVisual, (copy) updateButtonLabel
+	for _, v310 in builderPanel.Items.Conditions.Properties:GetChildren() do
+		if not v310:IsA("UIListLayout") then
+			v310:Destroy()
+		end
+	end
+	if selectedConditionIndex and currentConditionEntries[selectedConditionIndex] then
+		builderPanel.Items.Conditions.Properties.Visible = true
+		builderPanel.Items.Conditions.Items.Visible = false
+		builderPanel.Toolbar.Visible = true
+		builderPanel.Toolbar2.Visible = false
+		for _, v311 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+			if v311:IsA("TextButton") then
+				if v311.LayoutOrder == selectedConditionIndex then
+					v311.BorderColor3 = Color3.fromRGB(85, 255, 255)
+				else
+					v311.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				end
+			end
+		end
+		local v_u_312 = getConditionButtonByIndex()
+		local v_u_313 = builderPanel.Items.Conditions.Items[v_u_312.Name].Text
+		local v_u_314 = currentConditionEntries[selectedConditionIndex]
+		for v315, v316 in lineItemSchema[v_u_314.K_NAME] do
+			local v_u_317 = v316[1]
+			if v316[2] == 1 then
+				local v_u_318 = builderGui.Preset.OptionBool:Clone()
+				v_u_318.Option.Text = v_u_317
+				v_u_318.LayoutOrder = v315
+				setToggleVisual(v_u_318, v_u_314[v_u_317] == true)
+				v_u_318.Parent = builderPanel.Items.Conditions.Properties
+				v_u_318.Toggle.Side.MouseButton1Down:Connect(function()
+					-- upvalues: (copy) v_u_314, (copy) v_u_317, (ref) setToggleVisual, (copy) v_u_318, (ref) updateButtonLabel, (copy) v_u_312, (copy) v_u_313
+					v_u_314[v_u_317] = v_u_314[v_u_317] ~= true
+					setToggleVisual(v_u_318, v_u_314[v_u_317] == true)
+					updateButtonLabel(v_u_312, v_u_313, v_u_314)
+				end)
+			elseif v316[2] == 2 then
+				local v_u_319 = builderGui.Preset.OptionText:Clone()
+				v_u_319.Option.Text = v_u_317
+				v_u_319.LayoutOrder = v315
+				local v320 = v_u_319.TextBox
+				local v321 = v_u_314[v_u_317]
+				v320.Text = tostring(v321)
+				v_u_319.Parent = builderPanel.Items.Conditions.Properties
+				v_u_319.TextBox.FocusLost:Connect(function()
+					-- upvalues: (copy) v_u_314, (copy) v_u_317, (copy) v_u_319, (ref) updateButtonLabel, (copy) v_u_312, (copy) v_u_313
+					local v322 = v_u_314
+					local v323 = v_u_317
+					local v324 = v_u_319.TextBox.Text
+					v322[v323] = tonumber(v324)
+					updateButtonLabel(v_u_312, v_u_313, v_u_314)
+				end)
+				v_u_319.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+					-- upvalues: (copy) v_u_319
+					v_u_319.TextBox:ReleaseFocus()
+				end)
+			end
+		end
+	else
+		builderPanel.Items.Conditions.Properties.Visible = false
+		builderPanel.Items.Conditions.Items.Visible = true
+		builderPanel.Toolbar.Visible = false
+		builderPanel.Toolbar2.Visible = true
+		for _, v325 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+			if v325:IsA("TextButton") then
+				v325.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			end
+		end
+	end
+end
+local function addLineTimelineButton(p327, p328)
+	-- upvalues: (copy) builderPanel, (copy) fieldKeyMap, (ref) currentLineEntries, (copy) updateButtonLabel, (ref) selectedLineIndex, (copy) refreshLineProperties
+	local v_u_329 = p327:Clone()
+	v_u_329.LayoutOrder = p328
+	v_u_329.Size = UDim2.new(1, -5, 0.115, 0)
+	v_u_329.Parent = builderPanel.Items.Timeline.Timeline
+	local _ = fieldKeyMap[p327.Name]
+	local v330 = currentLineEntries[p328]
+	updateButtonLabel(v_u_329, p327.Text, v330)
+	v_u_329.MouseButton1Down:Connect(function()
+		-- upvalues: (ref) selectedLineIndex, (copy) v_u_329, (ref) refreshLineProperties
+		if selectedLineIndex == v_u_329.LayoutOrder then
+			selectedLineIndex = nil
+		else
+			selectedLineIndex = v_u_329.LayoutOrder
+		end
+		refreshLineProperties()
+	end)
+end
+local function addConditionTimelineButton(p332, p333)
+	-- upvalues: (copy) builderPanel, (copy) fieldKeyMap, (ref) currentConditionEntries, (copy) updateButtonLabel, (ref) selectedConditionIndex, (copy) refreshConditionProperties
+	local v_u_334 = p332:Clone()
+	v_u_334.LayoutOrder = p333
+	v_u_334.Size = UDim2.new(1, -5, 0.115, 0)
+	v_u_334.Parent = builderPanel.Items.Conditions.Timeline
+	local _ = fieldKeyMap[p332.Name]
+	local v335 = currentConditionEntries[p333]
+	updateButtonLabel(v_u_334, p332.Text, v335)
+	v_u_334.MouseButton1Down:Connect(function()
+		-- upvalues: (ref) selectedConditionIndex, (copy) v_u_334, (ref) refreshConditionProperties
+		if selectedConditionIndex == v_u_334.LayoutOrder then
+			selectedConditionIndex = nil
+		else
+			selectedConditionIndex = v_u_334.LayoutOrder
+		end
+		refreshConditionProperties()
+	end)
+end
+for _, v_u_337 in builderPanel.Items.Timeline.Items:GetChildren() do
+	if v_u_337:IsA("TextButton") then
+		v_u_337.MouseButton1Down:Connect(function()
+			-- upvalues: (copy) lineItemSchema, (copy) v_u_337, (ref) currentLineEntries, (ref) selectedLineIndex, (copy) addLineTimelineButton, (copy) refreshLineProperties, (copy) saveSkillData
+			if lineItemSchema[v_u_337.Name] then
+				local v338 = 1
+				for _, _ in currentLineEntries do
+					v338 = v338 + 1
+				end
+				selectedLineIndex = v338
+				currentLineEntries[v338] = {
+					["K_NAME"] = v_u_337.Name
+				}
+				for _, v339 in lineItemSchema[v_u_337.Name] do
+					currentLineEntries[v338][v339[1]] = v339[3]
+				end
+				addLineTimelineButton(v_u_337, v338)
+				refreshLineProperties()
+				saveSkillData()
+			end
+		end)
+	end
+end
+for _, v_u_340 in builderPanel.Items.Conditions.Items:GetChildren() do
+	if v_u_340:IsA("TextButton") then
+		v_u_340.MouseButton1Down:Connect(function()
+			-- upvalues: (copy) lineItemSchema, (copy) v_u_340, (ref) currentConditionEntries, (ref) selectedConditionIndex, (copy) addConditionTimelineButton, (copy) refreshConditionProperties, (copy) saveSkillData
+			if lineItemSchema[v_u_340.Name] then
+				local v341 = 1
+				for _, _ in currentConditionEntries do
+					v341 = v341 + 1
+				end
+				selectedConditionIndex = v341
+				currentConditionEntries[v341] = {
+					["K_NAME"] = v_u_340.Name
+				}
+				for _, v342 in lineItemSchema[v_u_340.Name] do
+					currentConditionEntries[v341][v342[1]] = v342[3]
+				end
+				addConditionTimelineButton(v_u_340, v341)
+				refreshConditionProperties()
+				saveSkillData()
+			end
+		end)
+	end
+end
+builderPanel.Toolbar.Kill.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) builderPanel, (ref) selectedLineIndex, (copy) getLineButtonByIndex, (ref) currentLineEntries, (copy) refreshLineProperties, (copy) saveSkillData, (ref) selectedConditionIndex, (copy) getConditionButtonByIndex, (ref) currentConditionEntries, (copy) refreshConditionProperties
+	if builderPanel.Items.Timeline.Visible == true then
+		if not selectedLineIndex then
+			return
+		end
+		local v343 = getLineButtonByIndex()
+		if not v343 then
+			return
+		end
+		v343:Destroy()
+		currentLineEntries[selectedLineIndex] = nil
+		for v344, v345 in currentLineEntries do
+			local v346 = getLineButtonByIndex(v344)
+			for v347 = v344, 1, -1 do
+				if not currentLineEntries[v347] then
+					currentLineEntries[v347] = v345
+					currentLineEntries[v344] = nil
+					v346.LayoutOrder = v347
+					break
+				end
+			end
+		end
+		refreshLineProperties()
+		saveSkillData()
+	elseif builderPanel.Items.Conditions.Visible == true then
+		if not selectedConditionIndex then
+			return
+		end
+		local v348 = getConditionButtonByIndex()
+		if not v348 then
+			return
+		end
+		v348:Destroy()
+		currentConditionEntries[selectedConditionIndex] = nil
+		for v349, v350 in currentConditionEntries do
+			local v351 = getConditionButtonByIndex(v349)
+			for v352 = v349, 1, -1 do
+				if not currentConditionEntries[v352] then
+					currentConditionEntries[v352] = v350
+					currentConditionEntries[v349] = nil
+					v351.LayoutOrder = v352
+					break
+				end
+			end
+		end
+		refreshConditionProperties()
+		saveSkillData()
+	end
+end)
+builderPanel.Toolbar.Up.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) builderPanel, (ref) selectedLineIndex, (ref) currentLineEntries, (copy) getLineButtonByIndex, (copy) refreshLineProperties, (copy) saveSkillData, (ref) selectedConditionIndex, (ref) currentConditionEntries, (copy) getConditionButtonByIndex, (copy) refreshConditionProperties
+	if builderPanel.Items.Timeline.Visible == true then
+		if selectedLineIndex then
+			local v353 = currentLineEntries[selectedLineIndex]
+			local v354 = currentLineEntries[selectedLineIndex - 1]
+			if v354 then
+				local v355 = getLineButtonByIndex()
+				local v356 = getLineButtonByIndex(selectedLineIndex - 1)
+				if v355 and v356 then
+					currentLineEntries[selectedLineIndex] = v354
+					currentLineEntries[selectedLineIndex - 1] = v353
+					v355.LayoutOrder = selectedLineIndex - 1
+					v356.LayoutOrder = selectedLineIndex
+					selectedLineIndex = selectedLineIndex - 1
+					refreshLineProperties()
+					saveSkillData()
+				end
+			else
+				return
+			end
+		else
+			return
+		end
+	else
+		if builderPanel.Items.Conditions.Visible == true then
+			if not selectedConditionIndex then
+				return
+			end
+			local v357 = currentConditionEntries[selectedConditionIndex]
+			local v358 = currentConditionEntries[selectedConditionIndex - 1]
+			if not v358 then
+				return
+			end
+			local v359 = getConditionButtonByIndex()
+			local v360 = getConditionButtonByIndex(selectedConditionIndex - 1)
+			if not (v359 and v360) then
+				return
+			end
+			currentConditionEntries[selectedConditionIndex] = v358
+			currentConditionEntries[selectedConditionIndex - 1] = v357
+			v359.LayoutOrder = selectedConditionIndex - 1
+			v360.LayoutOrder = selectedConditionIndex
+			selectedConditionIndex = selectedConditionIndex - 1
+			refreshConditionProperties()
+			saveSkillData()
+		end
+		return
+	end
+end)
+builderPanel.Toolbar.Down.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) builderPanel, (ref) selectedLineIndex, (ref) currentLineEntries, (copy) getLineButtonByIndex, (copy) refreshLineProperties, (copy) saveSkillData, (ref) selectedConditionIndex, (ref) currentConditionEntries, (copy) getConditionButtonByIndex, (copy) refreshConditionProperties
+	if builderPanel.Items.Timeline.Visible == true then
+		if selectedLineIndex then
+			local v361 = currentLineEntries[selectedLineIndex]
+			local v362 = currentLineEntries[selectedLineIndex + 1]
+			if v362 then
+				local v363 = getLineButtonByIndex()
+				local v364 = getLineButtonByIndex(selectedLineIndex + 1)
+				if v363 and v364 then
+					currentLineEntries[selectedLineIndex] = v362
+					currentLineEntries[selectedLineIndex + 1] = v361
+					v363.LayoutOrder = selectedLineIndex + 1
+					v364.LayoutOrder = selectedLineIndex
+					selectedLineIndex = selectedLineIndex + 1
+					refreshLineProperties()
+					saveSkillData()
+				end
+			else
+				return
+			end
+		else
+			return
+		end
+	else
+		if builderPanel.Items.Conditions.Visible == true then
+			if not selectedConditionIndex then
+				return
+			end
+			local v365 = currentConditionEntries[selectedConditionIndex]
+			local v366 = currentConditionEntries[selectedConditionIndex + 1]
+			if not v366 then
+				return
+			end
+			local v367 = getConditionButtonByIndex()
+			local v368 = getConditionButtonByIndex(selectedConditionIndex + 1)
+			if not (v367 and v368) then
+				return
+			end
+			currentConditionEntries[selectedConditionIndex] = v366
+			currentConditionEntries[selectedConditionIndex + 1] = v365
+			v367.LayoutOrder = selectedConditionIndex - 1
+			v368.LayoutOrder = selectedConditionIndex
+			selectedConditionIndex = selectedConditionIndex - 1
+			refreshConditionProperties()
+			saveSkillData()
+		end
+		return
+	end
+end)
+builderPanel.Toolbar.Copy.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) builderPanel, (ref) selectedLineIndex, (ref) currentLineEntries, (copy) getLineButtonByIndex, (copy) deepClone, (copy) addLineTimelineButton, (copy) refreshLineProperties, (copy) saveSkillData, (ref) selectedConditionIndex, (ref) currentConditionEntries, (copy) getConditionButtonByIndex, (copy) addConditionTimelineButton, (copy) refreshConditionProperties
+	if builderPanel.Items.Timeline.Visible == true then
+		if not selectedLineIndex then
+			return
+		end
+		local v369 = currentLineEntries[selectedLineIndex]
+		local v370 = builderPanel.Items.Timeline.Items:FindFirstChild(v369.K_NAME)
+		if not v370 then
+			return
+		end
+		local v371 = 0
+		for _, _ in currentLineEntries do
+			v371 = v371 + 1
+		end
+		for v372 = v371, 1, -1 do
+			if v372 <= selectedLineIndex then
+				break
+			end
+			local v373 = getLineButtonByIndex(v372)
+			currentLineEntries[v372 + 1] = currentLineEntries[v372]
+			currentLineEntries[v372] = nil
+			v373.LayoutOrder = v372 + 1
+		end
+		selectedLineIndex = selectedLineIndex + 1
+		currentLineEntries[selectedLineIndex] = deepClone(v369)
+		addLineTimelineButton(v370, selectedLineIndex)
+		refreshLineProperties()
+		saveSkillData()
+	elseif builderPanel.Items.Conditions.Visible == true then
+		if not selectedConditionIndex then
+			return
+		end
+		local v374 = currentConditionEntries[selectedConditionIndex]
+		local v375 = builderPanel.Items.Conditions.Items:FindFirstChild(v374.K_NAME)
+		if not v375 then
+			return
+		end
+		local v376 = 0
+		for _, _ in currentConditionEntries do
+			v376 = v376 + 1
+		end
+		for v377 = v376, 1, -1 do
+			if v377 <= selectedConditionIndex then
+				break
+			end
+			local v378 = getConditionButtonByIndex(v377)
+			currentConditionEntries[v377 + 1] = currentConditionEntries[v377]
+			currentConditionEntries[v377] = nil
+			v378.LayoutOrder = v377 + 1
+		end
+		selectedConditionIndex = selectedConditionIndex + 1
+		currentLineEntries[selectedConditionIndex] = deepClone(v374)
+		addConditionTimelineButton(v375, selectedConditionIndex)
+		refreshConditionProperties()
+		saveSkillData()
+	end
+end)
+builderPanel.Toolbar2.Copy.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) builderPanel, (copy) httpService, (ref) currentLineEntries, (ref) currentConditionEntries
+	_G.Clipboard_SB_Full = nil
+	if builderPanel.Items.Timeline.Visible == true then
+		_G.Clipboard_SB_Line = httpService:JSONEncode(currentLineEntries)
+	elseif builderPanel.Items.Conditions.Visible == true then
+		_G.Clipboard_SB_Req = httpService:JSONEncode(currentConditionEntries)
+	end
+end)
+builderPanel.Toolbar2.FullCopy.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) httpService, (ref) currentSkillData
+	_G.Clipboard_SB_Full = httpService:JSONEncode(currentSkillData)
+end)
+builderPanel.Toolbar2.Paste.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) SkillBuilder, (ref) isCharacterModeCopy, (copy) builderPanel, (ref) currentLineEntries, (copy) httpService, (ref) selectedLineIndex, (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) activeAnimationTrack, (copy) lineItemSchema, (copy) addLineTimelineButton, (ref) currentConditionEntries, (copy) addConditionTimelineButton
+	if _G.Clipboard_SB_Full then
+		SkillBuilder:updateKeys(_G.Clipboard_SB_Full, isCharacterModeCopy)
+		return
+	elseif builderPanel.Items.Timeline.Visible == true then
+		if _G.Clipboard_SB_Line ~= nil then
+			table.clear(currentLineEntries)
+			for v379, v380 in httpService:JSONDecode(_G.Clipboard_SB_Line) do
+				currentLineEntries[v379] = v380
+			end
+			selectedLineIndex = nil
+			previewStartTime = nil
+			previewEndTime = nil
+			animationTotalLength = nil
+			activeAnimationTrack = nil
+			for _, v381 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+				if v381:IsA("TextButton") then
+					v381:Destroy()
+				end
+			end
+			for v382, v383 in currentLineEntries do
+				if lineItemSchema[v383.K_NAME] then
+					addLineTimelineButton(builderPanel.Items.Timeline.Items[v383.K_NAME], v382)
+				end
+			end
+		end
+	else
+		if builderPanel.Items.Conditions.Visible == true then
+			if _G.Clipboard_SB_Req == nil then
+				return
+			end
+			table.clear(currentConditionEntries)
+			for v384, v385 in httpService:JSONDecode(_G.Clipboard_SB_Req) do
+				currentConditionEntries[v384] = v385
+			end
+			for _, v386 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+				if v386:IsA("TextButton") then
+					v386:Destroy()
+				end
+			end
+			for v387, v388 in currentConditionEntries do
+				if lineItemSchema[v388.K_NAME] then
+					addConditionTimelineButton(builderPanel.Items.Conditions.Items[v388.K_NAME], v387)
+				end
+			end
+		end
+		return
+	end
+end)
+local defaultBranchButton = builderPanel.Branch.Default
+local addBranchInput = builderPanel.Branch.AddBranch
+local function switchToBranch(p391)
+	-- upvalues: (ref) currentSkillData, (ref) currentLineEntries, (ref) currentConditionEntries, (ref) selectedLineIndex, (ref) selectedConditionIndex, (ref) activeBranchName, (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) activeAnimationTrack, (copy) builderPanel, (copy) lineItemSchema, (copy) addLineTimelineButton, (copy) addConditionTimelineButton, (copy) refreshLineProperties, (copy) refreshConditionProperties, (copy) defaultBranchButton
+	local v392 = currentSkillData.Branch[p391] and p391
+	currentLineEntries = v392 and currentSkillData.Branch[p391].Line or currentSkillData.Line
+	currentConditionEntries = v392 and currentSkillData.Branch[p391].Req or currentSkillData.Req
+	selectedLineIndex = nil
+	selectedConditionIndex = nil
+	activeBranchName = v392 or nil
+	previewStartTime = nil
+	previewEndTime = nil
+	animationTotalLength = nil
+	activeAnimationTrack = nil
+	for _, v393 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+		if v393:IsA("TextButton") then
+			v393:Destroy()
+		end
+	end
+	for _, v394 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+		if v394:IsA("TextButton") then
+			v394:Destroy()
+		end
+	end
+	for v395, v396 in currentLineEntries do
+		if lineItemSchema[v396.K_NAME] then
+			addLineTimelineButton(builderPanel.Items.Timeline.Items[v396.K_NAME], v395)
+		end
+	end
+	for v397, v398 in currentConditionEntries do
+		if lineItemSchema[v398.K_NAME] then
+			addConditionTimelineButton(builderPanel.Items.Conditions.Items[v398.K_NAME], v397)
+		end
+	end
+	refreshLineProperties()
+	refreshConditionProperties()
+	if v392 then
+		for _, v399 in builderPanel.Branch:GetChildren() do
+			if v399:IsA("TextButton") then
+				if v399 == defaultBranchButton or currentSkillData.Branch[v399.Name] then
+					v399.Select.Visible = v399.Name == v392
+				else
+					v399:Destroy()
+				end
+			end
+		end
+	else
+		for _, v400 in builderPanel.Branch:GetChildren() do
+			if v400:IsA("TextButton") then
+				if v400 == defaultBranchButton or currentSkillData.Branch[v400.Name] then
+					v400.Select.Visible = v400 == defaultBranchButton
+				else
+					v400:Destroy()
+				end
+			end
+		end
+	end
+end
+local function createOrRefreshBranch(p402)
+	-- upvalues: (ref) currentSkillData, (copy) builderPanel, (copy) defaultBranchButton, (copy) switchToBranch
+	if not currentSkillData.Branch then
+		currentSkillData.Branch = {}
+	end
+	if not currentSkillData.Branch[p402] then
+		currentSkillData.Branch[p402] = {
+			["Line"] = {},
+			["Req"] = {}
+		}
+	end
+	local v403 = {}
+	for v404, _ in pairs(currentSkillData.Branch) do
+		table.insert(v403, v404)
+	end
+	table.sort(v403)
+	for _, v405 in pairs(builderPanel.Branch:GetChildren()) do
+		if v405:IsA("TextButton") and v405 ~= defaultBranchButton then
+			v405:Destroy()
+		end
+	end
+	for _, v_u_406 in ipairs(v403) do
+		local v407 = defaultBranchButton:Clone()
+		v407.Name = v_u_406
+		v407.LayoutOrder = 1
+		v407.Select.Visible = false
+		v407.Text = v_u_406
+		v407.Parent = builderPanel.Branch
+		v407.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) switchToBranch, (copy) v_u_406
+			switchToBranch(v_u_406)
+		end)
+	end
+end
+defaultBranchButton.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) switchToBranch
+	switchToBranch(nil)
+end)
+builderPanel.Toolbar2.Kill.MouseButton1Down:Connect(function()
+	-- upvalues: (ref) activeBranchName, (ref) currentSkillData, (copy) switchToBranch, (copy) saveSkillData, (copy) debrisService
+	if activeBranchName == nil then
+		return
+	elseif currentSkillData.Branch then
+		if currentSkillData.Branch[activeBranchName] then
+			local v_u_409 = activeBranchName
+			local v410 = Instance.new("BindableFunction", script)
+			function v410.OnInvoke(p411)
+				-- upvalues: (ref) currentSkillData, (copy) v_u_409, (ref) switchToBranch, (ref) saveSkillData
+				if p411 == "Yes" then
+					if currentSkillData.Branch then
+						if currentSkillData.Branch[v_u_409] then
+							currentSkillData.Branch[v_u_409] = nil
+							switchToBranch(nil)
+							saveSkillData()
+						end
+					else
+						return
+					end
+				else
+					return
+				end
+			end
+			debrisService:AddItem(v410, 3)
+			game:GetService("StarterGui"):SetCore("SendNotification", {
+				["Title"] = "DELETE BRANCH",
+				["Text"] = "Are you sure you want to delete " .. activeBranchName .. "?",
+				["Button1"] = "Yes",
+				["Button2"] = "No",
+				["Callback"] = v410,
+				["Duration"] = 2
+			})
+		end
+	else
+		return
+	end
+end)
+addBranchInput.FocusLost:Connect(function(_)
+	-- upvalues: (copy) createOrRefreshBranch, (copy) addBranchInput, (copy) switchToBranch, (copy) saveSkillData
+	createOrRefreshBranch(addBranchInput.Text)
+	switchToBranch(addBranchInput.Text)
+	addBranchInput.Text = ""
+	saveSkillData()
+end)
+addBranchInput.ReturnPressedFromOnScreenKeyboard:Connect(function()
+	-- upvalues: (copy) addBranchInput
+	addBranchInput:ReleaseFocus()
+end)
+for v_u_412, v_u_413 in defaultSkillProps do
+	local v_u_414 = builderPanel.Items.Properties.List:FindFirstChild(v_u_412)
+	if v_u_414 then
+		if v_u_414:FindFirstChild("Toggle") then
+			v_u_414.Toggle.Side.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) currentSkillData, (copy) v_u_412, (copy) v_u_413, (copy) setToggleVisual, (copy) v_u_414, (copy) saveSkillData
+				currentSkillData.Prop[v_u_412] = not currentSkillData.Prop[v_u_412]
+				if currentSkillData.Prop[v_u_412] == v_u_413 then
+					currentSkillData.Prop[v_u_412] = nil
+				end
+				setToggleVisual(v_u_414, currentSkillData.Prop[v_u_412] or v_u_413)
+				saveSkillData()
+			end)
+		else
+			v_u_414.TextBox.FocusLost:Connect(function()
+				-- upvalues: (ref) currentSkillData, (copy) v_u_412, (copy) v_u_414, (copy) v_u_413, (copy) saveSkillData
+				currentSkillData.Prop[v_u_412] = v_u_414.TextBox.Text
+				if currentSkillData.Prop[v_u_412] == v_u_413 then
+					currentSkillData.Prop[v_u_412] = nil
+				end
+				v_u_414.TextBox.Text = currentSkillData.Prop[v_u_412] or v_u_413
+				saveSkillData()
+			end)
+			v_u_414.TextBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+				-- upvalues: (copy) v_u_414
+				v_u_414.TextBox:ReleaseFocus()
+			end)
+		end
+	end
+end
+function SkillBuilder.updateKeys(_, p_u_415, p416)
+	-- upvalues: (ref) isCharacterModeCopy, (copy) lineItemSchema, (ref) currentSkillData, (ref) currentLineEntries, (ref) currentConditionEntries, (ref) selectedLineIndex, (ref) selectedConditionIndex, (ref) activeBranchName, (ref) previewStartTime, (ref) previewEndTime, (ref) animationTotalLength, (ref) activeAnimationTrack, (copy) builderPanel, (copy) defaultBranchButton, (copy) addBranchInput, (copy) addLineTimelineButton, (copy) addConditionTimelineButton, (copy) defaultSkillProps, (copy) setToggleVisual, (copy) refreshLineProperties, (copy) refreshConditionProperties, (copy) createOrRefreshBranch
+	isCharacterModeCopy = p416
+	if p_u_415 == nil then
+		p_u_415 = {
+			["Line"] = {},
+			["Req"] = {},
+			["Prop"] = {}
+		}
+	else
+		local v431, v432 = pcall(function()
+			-- upvalues: (ref) p_u_415, (ref) lineItemSchema
+			p_u_415 = game:GetService("HttpService"):JSONDecode(p_u_415)
+			for v417, v418 in p_u_415.Line do
+				for _, v419 in lineItemSchema[v418.K_NAME] do
+					if v418[v419[1]] == nil then
+						p_u_415.Line[v417][v419[1]] = v419[3]
+					end
+				end
+			end
+			for v420, v421 in p_u_415.Req do
+				for _, v422 in lineItemSchema[v421.K_NAME] do
+					if v421[v422[1]] == nil then
+						p_u_415.Req[v420][v422[1]] = v422[3]
+					end
+				end
+			end
+			if p_u_415.Branch then
+				for v423, v424 in p_u_415.Branch do
+					for v425, v426 in v424.Line do
+						for _, v427 in lineItemSchema[v426.K_NAME] do
+							if v426[v427[1]] == nil then
+								p_u_415.Branch[v423].Line[v425][v427[1]] = v427[3]
+							end
+						end
+					end
+					for v428, v429 in v424.Req do
+						for _, v430 in lineItemSchema[v429.K_NAME] do
+							if v429[v430[1]] == nil then
+								p_u_415.Branch[v423].Req[v428][v430[1]] = v430[3]
+							end
+						end
+					end
+				end
+			end
+		end)
+		if not v431 then
+			p_u_415 = {
+				["Line"] = {},
+				["Req"] = {},
+				["Prop"] = {}
+			}
+			warn(v432)
+		end
+	end
+	currentSkillData = p_u_415
+	currentLineEntries = currentSkillData.Line
+	currentConditionEntries = currentSkillData.Req
+	selectedLineIndex = nil
+	selectedConditionIndex = nil
+	activeBranchName = nil
+	previewStartTime = nil
+	previewEndTime = nil
+	animationTotalLength = nil
+	activeAnimationTrack = nil
+	for _, v433 in builderPanel.Items.Timeline.Timeline:GetChildren() do
+		if v433:IsA("TextButton") then
+			v433:Destroy()
+		end
+	end
+	for _, v434 in builderPanel.Items.Conditions.Timeline:GetChildren() do
+		if v434:IsA("TextButton") then
+			v434:Destroy()
+		end
+	end
+	defaultBranchButton.Select.Visible = true
+	for _, v435 in builderPanel.Branch:GetChildren() do
+		if v435:IsA("TextButton") and (v435 ~= addBranchInput and v435 ~= defaultBranchButton) then
+			v435:Destroy()
+		end
+	end
+	for v436, v437 in currentLineEntries do
+		if lineItemSchema[v437.K_NAME] then
+			addLineTimelineButton(builderPanel.Items.Timeline.Items[v437.K_NAME], v436)
+		end
+	end
+	for v438, v439 in currentConditionEntries do
+		if lineItemSchema[v439.K_NAME] then
+			addConditionTimelineButton(builderPanel.Items.Conditions.Items[v439.K_NAME], v438)
+		end
+	end
+	for v440, v441 in defaultSkillProps do
+		if currentSkillData.Prop[v440] == v441 then
+			currentSkillData.Prop[v440] = nil
+		end
+		local v442 = builderPanel.Items.Properties.List:FindFirstChild(v440)
+		if typeof(v441) == "boolean" then
+			setToggleVisual(v442, currentSkillData.Prop[v440] or v441)
+		else
+			v442.TextBox.Text = currentSkillData.Prop[v440] or v441
+		end
+	end
+	refreshLineProperties()
+	refreshConditionProperties()
+	if currentSkillData.Branch ~= nil then
+		for v443, _ in currentSkillData.Branch do
+			createOrRefreshBranch(v443)
+		end
+	end
+end
+return SkillBuilder
