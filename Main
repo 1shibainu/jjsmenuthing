@@ -1,0 +1,997 @@
+-- Decompiled with Velocity Script Decompiler
+local localPlayer = game.Players.LocalPlayer
+local buildEvent = game.ReplicatedStorage.Remotes.BuildEvent
+local userInputService = game:GetService("UserInputService")
+local selectionHandler = require(script.Handle)
+require(script.Properties)
+local uiSounds = game.ReplicatedStorage.Sounds.Misc.UI
+local selectBox = selectionHandler.SelectBox
+local positionHandles = selectBox.Handles
+local rotationArcHandles = selectBox.ArcHandles
+local _ = script.Parent.Menu
+local logicPropertiesMenu = script.Parent.Menu2
+local toolsMenu = script.Parent.Menu3
+local isMultiSelectHeld = false
+local buildableRayParams = RaycastParams.new()
+buildableRayParams.FilterType = Enum.RaycastFilterType.Include
+buildableRayParams.FilterDescendantsInstances = { workspace.Map.Core.Buildable, workspace.Map.Destructible.Buildable, workspace.Logic }
+local mapRayParams = RaycastParams.new()
+mapRayParams.FilterType = Enum.RaycastFilterType.Include
+mapRayParams.FilterDescendantsInstances = { workspace.Map }
+local isCtrlHeld = false
+local isAltHeld = false
+local function cycleTransformMode()
+	-- upvalues: (copy) toolsMenu, (copy) positionHandles, (copy) rotationArcHandles
+	if toolsMenu.Tools.Mode.Text == "Position" then
+		toolsMenu.Tools.Mode.Text = "Rotation"
+		positionHandles.Visible = false
+		rotationArcHandles.Visible = true
+		return
+	elseif toolsMenu.Tools.Mode.Text == "Rotation" then
+		toolsMenu.Tools.Mode.Text = "Size"
+		positionHandles.Style = Enum.HandlesStyle.Resize
+		positionHandles.Visible = true
+		rotationArcHandles.Visible = false
+	elseif toolsMenu.Tools.Mode.Text == "Size" then
+		toolsMenu.Tools.Mode.Text = "Position"
+		positionHandles.Style = Enum.HandlesStyle.Movement
+		positionHandles.Visible = true
+		rotationArcHandles.Visible = false
+	end
+end
+local function toggleGlobalAxis()
+	-- upvalues: (copy) toolsMenu, (copy) selectionHandler
+	if _G.GlobalAxis == true then
+		_G.GlobalAxis = nil
+	else
+		_G.GlobalAxis = true
+	end
+	toolsMenu.Tools.Axis.Text = _G.GlobalAxis and "Global Axis" or "Local Axis"
+	selectionHandler:FindSelection()
+end
+local function getPartsInScreenRect(p18, p19, p20)
+	local v21 = Vector2.new
+	local v22 = p19.x
+	local v23 = p20.x
+	local v24 = math.min(v22, v23)
+	local v25 = p19.y
+	local v26 = p20.y
+	local v27 = v21(v24, (math.min(v25, v26)))
+	local v28 = Vector2.new
+	local v29 = p19.x
+	local v30 = p20.x
+	local v31 = math.max(v29, v30)
+	local v32 = p19.y
+	local v33 = p20.y
+	local v34 = v28(v31, (math.max(v32, v33)))
+	local v35 = {}
+	local v36 = {}
+	for _, v37 in workspace.Map.Destructible.Buildable:GetChildren() do
+		table.insert(v35, v37)
+	end
+	for _, v38 in workspace.Map.Core.Buildable:GetChildren() do
+		table.insert(v35, v38)
+	end
+	for _, v39 in workspace.Logic:GetChildren() do
+		table.insert(v35, v39)
+		if v39:FindFirstChild("Dest") then
+			local v40 = v39.Dest
+			table.insert(v35, v40)
+		end
+	end
+	for _, v41 in pairs(v35) do
+		if not v41:IsA("Folder") then
+			local v42 = v41.Position
+			local v43 = workspace.CurrentCamera.CFrame:pointToObjectSpace(v42)
+			local v44 = v43.x / -v43.z
+			local v45 = v43.y / -v43.z
+			if v27.x < v44 and (v44 < v34.x and (v27.y < v45 and (v45 < v34.y and p18.z < 0))) then
+				local _, v46 = workspace.CurrentCamera:WorldToScreenPoint(v41.Position)
+				if v46 then
+					table.insert(v36, v41)
+				end
+			end
+		end
+	end
+	return v36
+end
+buildEvent.OnClientEvent:Connect(function(p48)
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds
+	if p48 then
+		selectionHandler:PlaySound(uiSounds.Create)
+		for _, v49 in p48 do
+			selectionHandler:SelectPart(v49)
+		end
+	else
+		local v50 = selectionHandler:SendSelected()[1]
+		if v50 then
+			selectionHandler:SelectPart(v50)
+		end
+	end
+	selectionHandler:FindSelection()
+end)
+toolsMenu.Tools.Mode.MouseButton1Down:Connect(cycleTransformMode)
+toolsMenu.Tools.Copy.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler
+	selectionHandler:CopyPart()
+	selectionHandler:PastePart()
+end)
+toolsMenu.Tools.RemoveSpawns.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) buildEvent
+	buildEvent:FireServer("Spawns")
+end)
+toolsMenu.Tools.Undo.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) buildEvent
+	buildEvent:FireServer("Undo")
+end)
+local mouse = localPlayer:GetMouse()
+local function handleMouseClick()
+	-- upvalues: (copy) mouse, (copy) buildableRayParams, (copy) selectionHandler, (copy) uiSounds, (ref) isCtrlHeld, (ref) isMultiSelectHeld
+	local v52 = workspace.CurrentCamera.CFrame.Position
+	local v53 = CFrame.new(v52, mouse.Hit.Position).LookVector
+	local v54 = workspace:Raycast(v52, mouse.Hit.Position - v52 + v53 * 5, buildableRayParams)
+	if v54 then
+		if v54.Instance:IsDescendantOf(workspace.Logic) and (v54.Instance.Parent ~= workspace.Logic and v54.Instance.Name ~= "Dest") then
+			return
+		else
+			selectionHandler:PlaySound(uiSounds.Click)
+			if isCtrlHeld == true or isMultiSelectHeld ~= false then
+				if selectionHandler.Selected[v54.Instance] then
+					selectionHandler:DeselectPart(v54.Instance)
+					for v55, _ in selectionHandler.Selected do
+						selectionHandler:SelectPart(v55)
+					end
+				else
+					selectionHandler:SelectPart(v54.Instance)
+				end
+			else
+				for v56, _ in selectionHandler.Selected do
+					selectionHandler:DeselectPart(v56)
+				end
+				selectionHandler:SelectPart(v54.Instance)
+				return
+			end
+		end
+	else
+		for v57, _ in selectionHandler.Selected do
+			selectionHandler:DeselectPart(v57)
+		end
+		return
+	end
+end
+local isDragSelecting = false
+local selectionBox = script.Parent.SelectionBox
+local function beginDragSelect()
+	-- upvalues: (ref) isDragSelecting, (copy) mouse, (copy) selectionBox, (copy) handleMouseClick, (copy) getPartsInScreenRect, (ref) isCtrlHeld, (ref) isMultiSelectHeld, (copy) selectionHandler, (copy) uiSounds
+	isDragSelecting = true
+	local v61 = mouse.X
+	local v62 = mouse.Y
+	local v63 = workspace.CurrentCamera.CoordinateFrame:pointToObjectSpace(mouse.Hit.p)
+	local v64 = Vector2.new(v63.x / -v63.z, v63.y / -v63.z)
+	selectionBox.Visible = true
+	selectionBox.Position = UDim2.new(0, v61, 0, v62)
+	repeat
+		selectionBox.Size = UDim2.new(0, mouse.X - v61, 0, mouse.Y - v62)
+		task.wait()
+	until isDragSelecting == false
+	selectionBox.Visible = false
+	if (Vector2.new(v61, v62) - Vector2.new(mouse.X, mouse.Y)).Magnitude < 5 then
+		handleMouseClick()
+	else
+		local v65 = workspace.CurrentCamera.CoordinateFrame:pointToObjectSpace(mouse.Hit.p)
+		local v66 = getPartsInScreenRect(v65, v64, (Vector2.new(v65.x / -v65.z, v65.y / -v65.z)))
+		if isCtrlHeld ~= true and isMultiSelectHeld == false then
+			for v67, _ in selectionHandler.Selected do
+				selectionHandler:DeselectPart(v67)
+			end
+		end
+		if #v66 > 0 then
+			selectionHandler:PlaySound(uiSounds.Click)
+		end
+		for _, v68 in v66 do
+			selectionHandler:SelectPart(v68)
+		end
+	end
+end
+mouse.Button1Down:Connect(function()
+	-- upvalues: (ref) isMultiSelectHeld, (copy) handleMouseClick, (copy) beginDragSelect
+	if isMultiSelectHeld then
+		handleMouseClick()
+	else
+		beginDragSelect()
+	end
+end)
+mouse.Button1Up:Connect(function()
+	-- upvalues: (ref) isDragSelecting
+	isDragSelecting = false
+end)
+userInputService.InputBegan:Connect(function(p70, p71)
+	-- upvalues: (copy) cycleTransformMode, (copy) toolsMenu, (copy) selectionHandler, (ref) isCtrlHeld, (ref) isAltHeld, (copy) buildEvent
+	if p71 then
+		return
+	elseif p70.KeyCode == Enum.KeyCode.T then
+		cycleTransformMode()
+		return
+	elseif p70.KeyCode == Enum.KeyCode.Y then
+		if _G.GlobalAxis == true then
+			_G.GlobalAxis = nil
+		else
+			_G.GlobalAxis = true
+		end
+		toolsMenu.Tools.Axis.Text = _G.GlobalAxis and "Global Axis" or "Local Axis"
+		selectionHandler:FindSelection()
+		return
+	elseif p70.KeyCode == Enum.KeyCode.LeftControl or p70.KeyCode == Enum.KeyCode.LeftMeta then
+		isCtrlHeld = true
+		return
+	elseif p70.KeyCode == Enum.KeyCode.LeftAlt or p70.KeyCode == Enum.KeyCode.LeftMeta then
+		isAltHeld = true
+		return
+	elseif p70.KeyCode == Enum.KeyCode.C and isCtrlHeld == true then
+		selectionHandler:CopyPart()
+		return
+	elseif p70.KeyCode == Enum.KeyCode.V and isCtrlHeld == true then
+		selectionHandler:PastePart()
+	elseif p70.KeyCode == Enum.KeyCode.Z and isCtrlHeld == true then
+		buildEvent:FireServer("Undo")
+	end
+end)
+userInputService.InputEnded:Connect(function(p72, _)
+	-- upvalues: (ref) isCtrlHeld, (ref) isAltHeld
+	if p72.KeyCode == Enum.KeyCode.LeftControl or p72.KeyCode == Enum.KeyCode.LeftMeta then
+		isCtrlHeld = false
+	elseif p72.KeyCode == Enum.KeyCode.LeftAlt then
+		isAltHeld = false
+	end
+end)
+local isMultiSelectHeldCopy = isMultiSelectHeld
+local defaultPartSizes = {
+	["Part"] = Vector3.new(4, 1.2, 2),
+	["Spawn"] = Vector3.new(5, 1, 5)
+}
+for _, v_u_75 in script.Parent.Menu.Parts:GetChildren() do
+	if v_u_75:IsA("TextButton") then
+		v_u_75.MouseButton1Down:Connect(function()
+			-- upvalues: (copy) localPlayer, (copy) mapRayParams, (copy) defaultPartSizes, (copy) v_u_75, (copy) toolsMenu, (copy) buildEvent
+			local v76 = localPlayer.Character.HumanoidRootPart.Position
+			local v77 = workspace:Raycast(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.LookVector * 40, mapRayParams)
+			if v77 then
+				v76 = v77.Position + v77.Normal * (defaultPartSizes[v_u_75.Name] or Vector3.new(0.5, 0.5, 0.5))
+			end
+			local v78 = toolsMenu.Tools.Increments.Move.Text
+			local v79 = tonumber(v78)
+			local v80 = v76.X / v79
+			local v81 = math.round(v80) * v79
+			local v82 = v76.Y / v79
+			local v83 = math.round(v82) * v79
+			local v84 = v76.Z / v79
+			local v85 = math.round(v84) * v79
+			local v86 = Vector3.new(v81, v83, v85)
+			buildEvent:FireServer("Create", v_u_75.Name, v86)
+		end)
+	end
+end
+local handleDragOffsets = {}
+local selectedHandlePart = nil
+local normalToAxisMap = {
+	[Enum.NormalId.Left] = Vector3.new(1, 0, 0),
+	[Enum.NormalId.Right] = Vector3.new(1, 0, 0),
+	[Enum.NormalId.Top] = Vector3.new(0, 1, 0),
+	[Enum.NormalId.Bottom] = Vector3.new(0, 1, 0),
+	[Enum.NormalId.Front] = Vector3.new(0, 0, 1),
+	[Enum.NormalId.Back] = Vector3.new(0, 0, 1)
+}
+if _G.BuildMove then
+	toolsMenu.Tools.Increments.Move.Text = _G.BuildMove
+end
+if _G.BuildRotate then
+	toolsMenu.Tools.Increments.Rotate.Text = _G.BuildRotate
+end
+toolsMenu.Tools.Increments.Move:GetPropertyChangedSignal("Text"):Connect(function()
+	-- upvalues: (copy) toolsMenu
+	_G.BuildMove = toolsMenu.Tools.Increments.Move.Text
+end)
+toolsMenu.Tools.Increments.Rotate:GetPropertyChangedSignal("Text"):Connect(function()
+	-- upvalues: (copy) toolsMenu
+	_G.BuildRotate = toolsMenu.Tools.Increments.Rotate.Text
+end)
+local clearConfirmCallback = Instance.new("BindableFunction", script)
+function clearConfirmCallback.OnInvoke(p91)
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+	selectionHandler:PlaySound(uiSounds.Click)
+	if p91 == "Yes" then
+		buildEvent:FireServer("Clear")
+	end
+end
+toolsMenu.Tools.Clear.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) clearConfirmCallback
+	selectionHandler:PlaySound(uiSounds.Switch)
+	local v92 = {
+		["Title"] = "CLEAR ALL PARTS",
+		["Text"] = "Are you sure you want to clear all parts?",
+		["Button1"] = "Yes",
+		["Button2"] = "No",
+		["Callback"] = clearConfirmCallback,
+		["Duration"] = 2
+	}
+	game:GetService("StarterGui"):SetCore("SendNotification", v92)
+end)
+toolsMenu.Tools.Saves.MouseButton1Down:Connect(function()
+	script.Parent.Saves.Visible = not script.Parent.Saves.Visible
+end)
+local function applyHandleMove(p93, p94)
+	-- upvalues: (copy) toolsMenu, (ref) handleDragOffsets, (copy) positionHandles, (ref) selectedHandlePart, (copy) normalToAxisMap, (copy) selectionHandler
+	local v95 = toolsMenu.Tools.Increments.Move.Text
+	local v96 = tonumber(v95)
+	if v96 ~= 0 or not p94 then
+		local v97 = p94 / v96
+		p94 = math.round(v97) * v96
+	end
+	local v98 = Vector3.FromNormalId(p93)
+	for v99, v100 in handleDragOffsets do
+		local v101 = v100[1]
+		local v102 = v100[2]
+		local v103 = v100[3]
+		if positionHandles.Style == Enum.HandlesStyle.Movement then
+			local v104 = v98 * p94
+			v99.CFrame = selectedHandlePart * CFrame.new(v104) * v103
+		elseif v99.Name ~= "Dest" then
+			local v105 = v102 + normalToAxisMap[p93] * p94
+			if v105.X >= v96 and (v105.Y >= v96 and v105.Z >= v96) then
+				local v106 = v98 * (p94 / 2)
+				v99.CFrame = v101 * CFrame.new(v106)
+				v99.Size = v105
+			end
+		end
+	end
+	selectionHandler:FindSelection()
+end
+local function v118(p108, p109, _)
+	-- upvalues: (copy) toolsMenu, (ref) handleDragOffsets, (ref) selectedHandlePart, (copy) selectionHandler
+	local v110 = toolsMenu.Tools.Increments.Rotate.Text
+	local v111 = tonumber(v110)
+	local v112 = v111 == 0 and math.deg(p109)
+	if not v112 then
+		local v113 = math.deg(p109) / v111
+		v112 = math.round(v113) * v111
+	end
+	local v114 = Vector3.FromAxis(p108) * math.rad(v112)
+	for v115, v116 in handleDragOffsets do
+		local v117 = v116[3]
+		v115.CFrame = selectedHandlePart * CFrame.Angles(v114.X, v114.Y, v114.Z) * v117
+	end
+	selectionHandler:FindSelection()
+end
+local function v120()
+	-- upvalues: (ref) handleDragOffsets, (ref) selectedHandlePart, (copy) selectBox, (copy) selectionHandler
+	handleDragOffsets = {}
+	selectedHandlePart = selectBox.CFrame
+	for v119, _ in selectionHandler.Selected do
+		handleDragOffsets[v119] = { v119.CFrame, v119.Size, selectedHandlePart:ToObjectSpace(v119.CFrame) }
+	end
+end
+local function v128()
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (ref) handleDragOffsets
+	local v121 = {}
+	local v122 = {}
+	local v123 = {}
+	for v124, _ in selectionHandler.Selected do
+		if v124.Name == "Dest" then
+			local v125 = v124.Parent
+			table.insert(v122, v125)
+			local v126 = v124.CFrame
+			table.insert(v123, v126)
+		else
+			local v127 = { v124, v124.CFrame, v124.Size }
+			table.insert(v121, v127)
+		end
+	end
+	if #v121 > 0 then
+		buildEvent:FireServer("Move", v121)
+	end
+	if #v122 > 0 then
+		buildEvent:FireServer("LogicProp", v122, "Destination", v123)
+	end
+	handleDragOffsets = {}
+end
+for _, v_u_129 in script.Parent.Saves.Saves:GetChildren() do
+	if v_u_129:IsA("Frame") then
+		local v_u_130 = Instance.new("BindableFunction", v_u_129)
+		local v_u_131 = Instance.new("BindableFunction", v_u_129)
+		local v_u_132 = Instance.new("BindableFunction", v_u_129)
+		function v_u_131.OnInvoke(p133)
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) v_u_129, (copy) v_u_130, (copy) buildEvent
+			selectionHandler:PlaySound(uiSounds.Click)
+			if p133 == "Yes" then
+				local v134 = workspace:GetAttribute("LoadedSlot")
+				if v134 then
+					local v135 = v_u_129.Name
+					if v134 ~= tonumber(v135) then
+						game:GetService("StarterGui"):SetCore("SendNotification", {
+							["Title"] = "Slot " .. (v_u_129.Name == "-1" and "Autosave" or v_u_129.Name),
+							["Text"] = "This is NOT your currently loaded slot (" .. v134 .. "). Continue?",
+							["Button1"] = "Yes",
+							["Button2"] = "No",
+							["Callback"] = v_u_130,
+							["Duration"] = 2
+						})
+						return
+					end
+				end
+				local v136 = buildEvent
+				local v137 = v_u_129.Name
+				v136:FireServer("Save", (tonumber(v137)))
+				script.Parent.Saves.Visible = false
+			end
+		end
+		function v_u_132.OnInvoke(p138)
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent, (copy) v_u_129
+			selectionHandler:PlaySound(uiSounds.Click)
+			if p138 == "Yes" then
+				local v139 = buildEvent
+				local v140 = v_u_129.Name
+				v139:FireServer("Load", (tonumber(v140)))
+				script.Parent.Saves.Visible = false
+			end
+		end
+		function v_u_130.OnInvoke(p141)
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent, (copy) v_u_129
+			selectionHandler:PlaySound(uiSounds.Click)
+			if p141 == "Yes" then
+				local v142 = buildEvent
+				local v143 = v_u_129.Name
+				v142:FireServer("Save", (tonumber(v143)))
+				script.Parent.Saves.Visible = false
+			end
+		end
+		if v_u_129:FindFirstChild("Save") then
+			v_u_129.Save.MouseButton1Down:Connect(function()
+				-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) v_u_129, (copy) v_u_131
+				selectionHandler:PlaySound(uiSounds.Switch)
+				game:GetService("StarterGui"):SetCore("SendNotification", {
+					["Title"] = "Slot " .. (v_u_129.Name == "-1" and "Autosave" or v_u_129.Name),
+					["Text"] = "Are you sure you want to save?",
+					["Button1"] = "Yes",
+					["Button2"] = "No",
+					["Callback"] = v_u_131,
+					["Duration"] = 2
+				})
+			end)
+		end
+		v_u_129.Load.MouseButton1Down:Connect(function()
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) v_u_129, (copy) v_u_132
+			selectionHandler:PlaySound(uiSounds.Switch)
+			game:GetService("StarterGui"):SetCore("SendNotification", {
+				["Title"] = "Slot " .. (v_u_129.Name == "-1" and "Autosave" or v_u_129.Name),
+				["Text"] = "Are you sure you want to load?",
+				["Button1"] = "Yes",
+				["Button2"] = "No",
+				["Callback"] = v_u_132,
+				["Duration"] = 2
+			})
+		end)
+		v_u_129.TextBox.FocusLost:Connect(function()
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) v_u_129
+			selectionHandler:PlaySound(uiSounds.Click)
+			local v144 = game.ReplicatedStorage.Remotes.SlotName
+			local v145 = v_u_129.Name
+			v144:FireServer(tonumber(v145), v_u_129.TextBox.Text)
+		end)
+	end
+end
+positionHandles.MouseDrag:Connect(applyHandleMove)
+rotationArcHandles.MouseDrag:Connect(v118)
+positionHandles.MouseButton1Down:Connect(v120)
+rotationArcHandles.MouseButton1Down:Connect(v120)
+positionHandles.MouseButton1Up:Connect(v128)
+rotationArcHandles.MouseButton1Up:Connect(v128)
+for _, v146 in script.Parent:GetDescendants() do
+	if v146:IsA("TextButton") then
+		v146.MouseButton1Click:Connect(function()
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds
+			selectionHandler:PlaySound(uiSounds.Click)
+		end)
+		v146.MouseEnter:Connect(function()
+			-- upvalues: (copy) selectionHandler, (copy) uiSounds
+			selectionHandler:PlaySound(uiSounds.Hover)
+		end)
+	end
+end
+script.Parent.DescendantAdded:Connect(function(p147)
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds
+	if p147:IsA("TextButton") then
+		p147.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds
+			selectionHandler:PlaySound(uiSounds.Click)
+		end)
+		p147.MouseEnter:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds
+			selectionHandler:PlaySound(uiSounds.Hover)
+		end)
+	end
+end)
+userInputService.InputChanged:Connect(function(p148)
+	-- upvalues: (copy) logicPropertiesMenu, (ref) isMultiSelectHeldCopy
+	if p148.UserInputType == Enum.UserInputType.Touch then
+		logicPropertiesMenu.Position = UDim2.new(0, 10, 0.5, -150)
+		logicPropertiesMenu.AnchorPoint = Vector2.new(0, 0)
+		isMultiSelectHeldCopy = true
+	else
+		logicPropertiesMenu.Position = UDim2.new(1, -220, 0.5, -150)
+		logicPropertiesMenu.AnchorPoint = Vector2.new(1, 0)
+		isMultiSelectHeldCopy = false
+	end
+end)
+local nonWirableTypes = {
+	["Image"] = true,
+	["Texture"] = true
+}
+local lastWireUpdateTimestamp = nil
+local function v209(p_u_151)
+	-- upvalues: (ref) lastWireUpdateTimestamp, (copy) nonWirableTypes
+	task.defer(function()
+		-- upvalues: (copy) p_u_151, (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+		if p_u_151:FindFirstChildWhichIsA("SelectionBox") then
+			for _, v152 in p_u_151:GetDescendants() do
+				if v152:IsA("BillboardGui") then
+					v152.Enabled = true
+				elseif v152:IsA("SelectionBox") then
+					v152.Visible = true
+				end
+			end
+		end
+		if p_u_151:FindFirstChild("Core") then
+			if not _G.LogicWire then
+				local v_u_153 = tick()
+				lastWireUpdateTimestamp = v_u_153
+				task.delay(0.08, function()
+					-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_153, (ref) nonWirableTypes
+					if lastWireUpdateTimestamp == v_u_153 then
+						for _, v154 in workspace.Logic:GetDescendants() do
+							if v154:IsA("Beam") then
+								v154:Destroy()
+							end
+						end
+						local v155 = workspace.Logic:GetChildren()
+						for v156 = #v155, 1, -1 do
+							local v157 = v155[v156]
+							if v157 and nonWirableTypes[v157.Name] then
+								table.remove(v155, v156)
+							end
+						end
+						for _, v158 in v155 do
+							local v159 = v158.Core
+							local v160 = v158:GetAttribute("O")
+							local v161 = Color3.new(1, 1, 1)
+							local v162 = v158:FindFirstChildWhichIsA("SelectionBox")
+							if v162 then
+								v161 = v162.Color3
+							end
+							local v163 = ColorSequence.new(v161)
+							for _, v164 in v155 do
+								if v164 ~= v158 then
+									local v165 = v164:FindFirstChild("Core")
+									if v165 and (v160 ~= nil and v164:GetAttribute("I") == v160) then
+										local v166 = script.Beam:Clone()
+										v166.Attachment0 = v159
+										v166.Attachment1 = v165
+										v166.Color = v163
+										v166.Parent = v165
+									end
+								end
+							end
+						end
+					end
+				end)
+			end
+			p_u_151:GetAttributeChangedSignal("I"):Connect(function()
+				-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+				if not _G.LogicWire then
+					local v_u_167 = tick()
+					lastWireUpdateTimestamp = v_u_167
+					task.delay(0.08, function()
+						-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_167, (ref) nonWirableTypes
+						if lastWireUpdateTimestamp == v_u_167 then
+							for _, v168 in workspace.Logic:GetDescendants() do
+								if v168:IsA("Beam") then
+									v168:Destroy()
+								end
+							end
+							local v169 = workspace.Logic:GetChildren()
+							for v170 = #v169, 1, -1 do
+								local v171 = v169[v170]
+								if v171 and nonWirableTypes[v171.Name] then
+									table.remove(v169, v170)
+								end
+							end
+							for _, v172 in v169 do
+								local v173 = v172.Core
+								local v174 = v172:GetAttribute("O")
+								local v175 = Color3.new(1, 1, 1)
+								local v176 = v172:FindFirstChildWhichIsA("SelectionBox")
+								if v176 then
+									v175 = v176.Color3
+								end
+								local v177 = ColorSequence.new(v175)
+								for _, v178 in v169 do
+									if v178 ~= v172 then
+										local v179 = v178:FindFirstChild("Core")
+										if v179 and (v174 ~= nil and v178:GetAttribute("I") == v174) then
+											local v180 = script.Beam:Clone()
+											v180.Attachment0 = v173
+											v180.Attachment1 = v179
+											v180.Color = v177
+											v180.Parent = v179
+										end
+									end
+								end
+							end
+						end
+					end)
+				end
+			end)
+			p_u_151:GetAttributeChangedSignal("O"):Connect(function()
+				-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+				if not _G.LogicWire then
+					local v_u_181 = tick()
+					lastWireUpdateTimestamp = v_u_181
+					task.delay(0.08, function()
+						-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_181, (ref) nonWirableTypes
+						if lastWireUpdateTimestamp == v_u_181 then
+							for _, v182 in workspace.Logic:GetDescendants() do
+								if v182:IsA("Beam") then
+									v182:Destroy()
+								end
+							end
+							local v183 = workspace.Logic:GetChildren()
+							for v184 = #v183, 1, -1 do
+								local v185 = v183[v184]
+								if v185 and nonWirableTypes[v185.Name] then
+									table.remove(v183, v184)
+								end
+							end
+							for _, v186 in v183 do
+								local v187 = v186.Core
+								local v188 = v186:GetAttribute("O")
+								local v189 = Color3.new(1, 1, 1)
+								local v190 = v186:FindFirstChildWhichIsA("SelectionBox")
+								if v190 then
+									v189 = v190.Color3
+								end
+								local v191 = ColorSequence.new(v189)
+								for _, v192 in v183 do
+									if v192 ~= v186 then
+										local v193 = v192:FindFirstChild("Core")
+										if v193 and (v188 ~= nil and v192:GetAttribute("I") == v188) then
+											local v194 = script.Beam:Clone()
+											v194.Attachment0 = v187
+											v194.Attachment1 = v193
+											v194.Color = v191
+											v194.Parent = v193
+										end
+									end
+								end
+							end
+						end
+					end)
+				end
+			end)
+			p_u_151.Destroying:Connect(function()
+				-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+				if not _G.LogicWire then
+					local v_u_195 = tick()
+					lastWireUpdateTimestamp = v_u_195
+					task.delay(0.08, function()
+						-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_195, (ref) nonWirableTypes
+						if lastWireUpdateTimestamp == v_u_195 then
+							for _, v196 in workspace.Logic:GetDescendants() do
+								if v196:IsA("Beam") then
+									v196:Destroy()
+								end
+							end
+							local v197 = workspace.Logic:GetChildren()
+							for v198 = #v197, 1, -1 do
+								local v199 = v197[v198]
+								if v199 and nonWirableTypes[v199.Name] then
+									table.remove(v197, v198)
+								end
+							end
+							for _, v200 in v197 do
+								local v201 = v200.Core
+								local v202 = v200:GetAttribute("O")
+								local v203 = Color3.new(1, 1, 1)
+								local v204 = v200:FindFirstChildWhichIsA("SelectionBox")
+								if v204 then
+									v203 = v204.Color3
+								end
+								local v205 = ColorSequence.new(v203)
+								for _, v206 in v197 do
+									if v206 ~= v200 then
+										local v207 = v206:FindFirstChild("Core")
+										if v207 and (v202 ~= nil and v206:GetAttribute("I") == v202) then
+											local v208 = script.Beam:Clone()
+											v208.Attachment0 = v201
+											v208.Attachment1 = v207
+											v208.Color = v205
+											v208.Parent = v207
+										end
+									end
+								end
+							end
+						end
+					end)
+				end
+			end)
+		end
+	end)
+end
+local v210 = localPlayer:FindFirstChild("Gamepasses")
+if v210 and v210:GetAttribute("984868818") then
+	script.Parent.Saves.Saves["4"].Visible = true
+	script.Parent.Saves.Saves["5"].Visible = true
+	script.Parent.Saves.Saves["6"].Visible = true
+end
+game.ReplicatedStorage.Remotes.SlotName.OnClientEvent:Connect(function(p211)
+	script.Parent.Menu.Warn.Visible = not p211
+end)
+toolsMenu.Tools.Axis.MouseButton1Down:Connect(toggleGlobalAxis)
+workspace.Logic.ChildAdded:Connect(v209)
+if _G.LogicWire then
+	toolsMenu.Tools.Wire.BackgroundColor3 = not _G.LogicWire == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+else
+	for v212, v_u_213 in workspace.Logic:GetChildren() do
+		task.defer(function()
+			-- upvalues: (copy) v_u_213, (ref) lastWireUpdateTimestamp, (copy) nonWirableTypes
+			if v_u_213:FindFirstChildWhichIsA("SelectionBox") then
+				for _, v214 in v_u_213:GetDescendants() do
+					if v214:IsA("BillboardGui") then
+						v214.Enabled = true
+					elseif v214:IsA("SelectionBox") then
+						v214.Visible = true
+					end
+				end
+			end
+			if v_u_213:FindFirstChild("Core") then
+				if not _G.LogicWire then
+					local v_u_215 = tick()
+					lastWireUpdateTimestamp = v_u_215
+					task.delay(0.08, function()
+						-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_215, (ref) nonWirableTypes
+						if lastWireUpdateTimestamp == v_u_215 then
+							for _, v216 in workspace.Logic:GetDescendants() do
+								if v216:IsA("Beam") then
+									v216:Destroy()
+								end
+							end
+							local v217 = workspace.Logic:GetChildren()
+							for v218 = #v217, 1, -1 do
+								local v219 = v217[v218]
+								if v219 and nonWirableTypes[v219.Name] then
+									table.remove(v217, v218)
+								end
+							end
+							for _, v220 in v217 do
+								local v221 = v220.Core
+								local v222 = v220:GetAttribute("O")
+								local v223 = Color3.new(1, 1, 1)
+								local v224 = v220:FindFirstChildWhichIsA("SelectionBox")
+								if v224 then
+									v223 = v224.Color3
+								end
+								local v225 = ColorSequence.new(v223)
+								for _, v226 in v217 do
+									if v226 ~= v220 then
+										local v227 = v226:FindFirstChild("Core")
+										if v227 and (v222 ~= nil and v226:GetAttribute("I") == v222) then
+											local v228 = script.Beam:Clone()
+											v228.Attachment0 = v221
+											v228.Attachment1 = v227
+											v228.Color = v225
+											v228.Parent = v227
+										end
+									end
+								end
+							end
+						end
+					end)
+				end
+				v_u_213:GetAttributeChangedSignal("I"):Connect(function()
+					-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+					if not _G.LogicWire then
+						local v_u_229 = tick()
+						lastWireUpdateTimestamp = v_u_229
+						task.delay(0.08, function()
+							-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_229, (ref) nonWirableTypes
+							if lastWireUpdateTimestamp == v_u_229 then
+								for _, v230 in workspace.Logic:GetDescendants() do
+									if v230:IsA("Beam") then
+										v230:Destroy()
+									end
+								end
+								local v231 = workspace.Logic:GetChildren()
+								for v232 = #v231, 1, -1 do
+									local v233 = v231[v232]
+									if v233 and nonWirableTypes[v233.Name] then
+										table.remove(v231, v232)
+									end
+								end
+								for _, v234 in v231 do
+									local v235 = v234.Core
+									local v236 = v234:GetAttribute("O")
+									local v237 = Color3.new(1, 1, 1)
+									local v238 = v234:FindFirstChildWhichIsA("SelectionBox")
+									if v238 then
+										v237 = v238.Color3
+									end
+									local v239 = ColorSequence.new(v237)
+									for _, v240 in v231 do
+										if v240 ~= v234 then
+											local v241 = v240:FindFirstChild("Core")
+											if v241 and (v236 ~= nil and v240:GetAttribute("I") == v236) then
+												local v242 = script.Beam:Clone()
+												v242.Attachment0 = v235
+												v242.Attachment1 = v241
+												v242.Color = v239
+												v242.Parent = v241
+											end
+										end
+									end
+								end
+							end
+						end)
+					end
+				end)
+				v_u_213:GetAttributeChangedSignal("O"):Connect(function()
+					-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+					if not _G.LogicWire then
+						local v_u_243 = tick()
+						lastWireUpdateTimestamp = v_u_243
+						task.delay(0.08, function()
+							-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_243, (ref) nonWirableTypes
+							if lastWireUpdateTimestamp == v_u_243 then
+								for _, v244 in workspace.Logic:GetDescendants() do
+									if v244:IsA("Beam") then
+										v244:Destroy()
+									end
+								end
+								local v245 = workspace.Logic:GetChildren()
+								for v246 = #v245, 1, -1 do
+									local v247 = v245[v246]
+									if v247 and nonWirableTypes[v247.Name] then
+										table.remove(v245, v246)
+									end
+								end
+								for _, v248 in v245 do
+									local v249 = v248.Core
+									local v250 = v248:GetAttribute("O")
+									local v251 = Color3.new(1, 1, 1)
+									local v252 = v248:FindFirstChildWhichIsA("SelectionBox")
+									if v252 then
+										v251 = v252.Color3
+									end
+									local v253 = ColorSequence.new(v251)
+									for _, v254 in v245 do
+										if v254 ~= v248 then
+											local v255 = v254:FindFirstChild("Core")
+											if v255 and (v250 ~= nil and v254:GetAttribute("I") == v250) then
+												local v256 = script.Beam:Clone()
+												v256.Attachment0 = v249
+												v256.Attachment1 = v255
+												v256.Color = v253
+												v256.Parent = v255
+											end
+										end
+									end
+								end
+							end
+						end)
+					end
+				end)
+				v_u_213.Destroying:Connect(function()
+					-- upvalues: (ref) lastWireUpdateTimestamp, (ref) nonWirableTypes
+					if not _G.LogicWire then
+						local v_u_257 = tick()
+						lastWireUpdateTimestamp = v_u_257
+						task.delay(0.08, function()
+							-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_257, (ref) nonWirableTypes
+							if lastWireUpdateTimestamp == v_u_257 then
+								for _, v258 in workspace.Logic:GetDescendants() do
+									if v258:IsA("Beam") then
+										v258:Destroy()
+									end
+								end
+								local v259 = workspace.Logic:GetChildren()
+								for v260 = #v259, 1, -1 do
+									local v261 = v259[v260]
+									if v261 and nonWirableTypes[v261.Name] then
+										table.remove(v259, v260)
+									end
+								end
+								for _, v262 in v259 do
+									local v263 = v262.Core
+									local v264 = v262:GetAttribute("O")
+									local v265 = Color3.new(1, 1, 1)
+									local v266 = v262:FindFirstChildWhichIsA("SelectionBox")
+									if v266 then
+										v265 = v266.Color3
+									end
+									local v267 = ColorSequence.new(v265)
+									for _, v268 in v259 do
+										if v268 ~= v262 then
+											local v269 = v268:FindFirstChild("Core")
+											if v269 and (v264 ~= nil and v268:GetAttribute("I") == v264) then
+												local v270 = script.Beam:Clone()
+												v270.Attachment0 = v263
+												v270.Attachment1 = v269
+												v270.Color = v267
+												v270.Parent = v269
+											end
+										end
+									end
+								end
+							end
+						end)
+					end
+				end)
+			end
+		end)
+		if v212 % 40 == 0 then
+			task.wait()
+		end
+	end
+end
+toolsMenu.Tools.Wire.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) toolsMenu, (ref) lastWireUpdateTimestamp, (copy) nonWirableTypes
+	_G.LogicWire = not _G.LogicWire
+	toolsMenu.Tools.Wire.BackgroundColor3 = not _G.LogicWire == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+	if _G.LogicWire then
+		for _, v271 in workspace.Logic:GetDescendants() do
+			if v271:IsA("Beam") then
+				v271:Destroy()
+			end
+		end
+		return
+	elseif not _G.LogicWire then
+		local v_u_272 = tick()
+		lastWireUpdateTimestamp = v_u_272
+		task.delay(0.08, function()
+			-- upvalues: (ref) lastWireUpdateTimestamp, (copy) v_u_272, (ref) nonWirableTypes
+			if lastWireUpdateTimestamp == v_u_272 then
+				for _, v273 in workspace.Logic:GetDescendants() do
+					if v273:IsA("Beam") then
+						v273:Destroy()
+					end
+				end
+				local v274 = workspace.Logic:GetChildren()
+				for v275 = #v274, 1, -1 do
+					local v276 = v274[v275]
+					if v276 and nonWirableTypes[v276.Name] then
+						table.remove(v274, v275)
+					end
+				end
+				for _, v277 in v274 do
+					local v278 = v277.Core
+					local v279 = v277:GetAttribute("O")
+					local v280 = Color3.new(1, 1, 1)
+					local v281 = v277:FindFirstChildWhichIsA("SelectionBox")
+					if v281 then
+						v280 = v281.Color3
+					end
+					local v282 = ColorSequence.new(v280)
+					for _, v283 in v274 do
+						if v283 ~= v277 then
+							local v284 = v283:FindFirstChild("Core")
+							if v284 and (v279 ~= nil and v283:GetAttribute("I") == v279) then
+								local v285 = script.Beam:Clone()
+								v285.Attachment0 = v278
+								v285.Attachment1 = v284
+								v285.Color = v282
+								v285.Parent = v284
+							end
+						end
+					end
+				end
+			end
+		end)
+	end
+end)
