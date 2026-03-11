@@ -1,0 +1,1435 @@
+-- Decompiled with Velocity Script Decompiler
+local PropertiesModule = {}
+if game:GetService("RunService"):IsClient() == false then
+	return PropertiesModule
+end
+local localPlayer = game.Players.LocalPlayer
+local buildEvent = game.ReplicatedStorage.Remotes.BuildEvent
+local selectionHandler = require(script.Parent.Handle)
+local builderModule = require(script.Parent.Builder)
+local characterModule = require(script.Parent.Character)
+local uiSounds = game.ReplicatedStorage.Sounds.Misc.UI
+local userInputService = game:GetService("UserInputService")
+local builderGui = script.Parent.Parent
+local propertiesMenu = builderGui.Menu
+local logicPropertiesMenu = builderGui.Menu2
+local _ = builderGui.Menu3
+logicPropertiesMenu.Properties.Color:GetPropertyChangedSignal("Text"):Connect(function()
+	-- upvalues: (copy) logicPropertiesMenu
+	local v12 = logicPropertiesMenu.Properties.Color
+	local v13 = Color3.fromRGB
+	local v14 = string.split
+	local v15 = logicPropertiesMenu.Properties.Color.Text
+	v12.BackgroundColor3 = v13(unpack(v14(v15)))
+end)
+logicPropertiesMenu.Properties.Color.FocusLost:Connect(function(p16)
+	-- upvalues: (copy) buildEvent, (copy) selectionHandler, (copy) logicPropertiesMenu
+	if p16 then
+		local v17 = buildEvent
+		local v18 = selectionHandler:SendSelected()
+		local v19 = Color3.fromRGB
+		local v20 = string.split
+		local v21 = logicPropertiesMenu.Properties.Color.Text
+		v17:FireServer("Color", v18, v19(unpack(v20(v21))))
+	end
+end)
+logicPropertiesMenu.Properties.Transparent.FocusLost:Connect(function(p22)
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (copy) logicPropertiesMenu
+	if p22 then
+		local v23 = {}
+		local v24 = {}
+		for v25, _ in selectionHandler.Selected do
+			if v25.Name == "Move" then
+				table.insert(v24, v25)
+			else
+				table.insert(v23, v25)
+			end
+		end
+		if #v23 > 0 then
+			buildEvent:FireServer("Transparency", v23, logicPropertiesMenu.Properties.Transparent.Text)
+		end
+		if #v24 > 0 then
+			buildEvent:FireServer("LogicProp", v24, "Delay", logicPropertiesMenu.Properties.Transparent.Text)
+		end
+	end
+end)
+propertiesMenu.Properties.CanCollide.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (copy) propertiesMenu
+	local v26 = not selectionHandler:FirstSelected().CanCollide
+	buildEvent:FireServer("Collide", selectionHandler:SendSelected(), nil, v26)
+	propertiesMenu.Properties.CanCollide.BackgroundColor3 = v26 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+end)
+propertiesMenu.Properties.CastShadow.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (copy) propertiesMenu
+	local v27 = not selectionHandler:FirstSelected().CastShadow
+	buildEvent:FireServer("Collide", selectionHandler:SendSelected(), true, v27)
+	propertiesMenu.Properties.CastShadow.BackgroundColor3 = v27 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+end)
+propertiesMenu.Properties.Breakable.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (copy) propertiesMenu
+	local v28 = selectionHandler:FirstSelected().Parent ~= workspace.Map.Destructible.Buildable
+	buildEvent:FireServer("Breakable", selectionHandler:SendSelected(), v28)
+	propertiesMenu.Properties.Breakable.BackgroundColor3 = v28 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+end)
+propertiesMenu.Properties.Neutral.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) buildEvent, (copy) propertiesMenu
+	local v29 = not selectionHandler:FirstSelected().Neutral
+	buildEvent:FireServer("Neutral", selectionHandler:SendSelected(), v29)
+	propertiesMenu.Properties.Neutral.BackgroundColor3 = v29 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+end)
+propertiesMenu.Properties.Delete.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+	selectionHandler:PlaySound(uiSounds.Destroya)
+	buildEvent:FireServer("Delete", selectionHandler:SendSelected())
+end)
+propertiesMenu.DeleteMulti.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+	selectionHandler:PlaySound(uiSounds.Destroya)
+	buildEvent:FireServer("Delete", selectionHandler:SendSelected())
+end)
+propertiesMenu.Properties2.Input.FocusLost:Connect(function()
+	-- upvalues: (copy) buildEvent, (copy) selectionHandler, (copy) propertiesMenu
+	buildEvent:FireServer("Inputs", selectionHandler:SendSelected(), propertiesMenu.Properties2.Input.Text, propertiesMenu.Properties2.Output.Text)
+end)
+propertiesMenu.Properties2.Output.FocusLost:Connect(function()
+	-- upvalues: (copy) buildEvent, (copy) selectionHandler, (copy) propertiesMenu
+	buildEvent:FireServer("Inputs", selectionHandler:SendSelected(), propertiesMenu.Properties2.Input.Text, propertiesMenu.Properties2.Output.Text)
+end)
+propertiesMenu.Properties2.Delete.MouseButton1Down:Connect(function()
+	-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+	selectionHandler:PlaySound(uiSounds.Destroya)
+	buildEvent:FireServer("Delete", selectionHandler:SendSelected())
+end)
+local listData = require(game.ReplicatedStorage.Modules.ListData)
+local aiTypes = { "Aggressive", "Passive", "Masher" }
+for v32, v_u_33 in listData.Materials do
+	local v34 = builderGui.Preset.Button:Clone()
+	v34.LayoutOrder = v32
+	v34.Parent = logicPropertiesMenu.Properties.Material
+	v34.Text = v_u_33
+	v34.MouseButton1Down:Connect(function()
+		-- upvalues: (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent, (copy) v_u_33
+		selectionHandler:PlaySound(uiSounds.Create)
+		buildEvent:FireServer("Material", selectionHandler:SendSelected(), v_u_33)
+	end)
+end
+local mouse = localPlayer:GetMouse()
+local isPickingColor = false
+local isPickingBrightness = false
+local colorHue = 1
+local colorSaturation = 1
+local colorBrightness = 1
+logicPropertiesMenu.Properties.ColorPick.Pick.Picker.MouseButton1Down:Connect(function()
+	-- upvalues: (ref) isPickingColor, (copy) logicPropertiesMenu, (copy) mouse, (ref) colorHue, (ref) colorSaturation, (ref) colorBrightness
+	isPickingColor = true
+	local v41 = logicPropertiesMenu.Properties.ColorPick.Pick
+	repeat
+		local v42 = v41.AbsolutePosition
+		local v43 = v41.AbsoluteSize
+		local v44 = v42.X
+		local v45 = v42.X + v43.X
+		local v46 = v42.Y
+		local v47 = v42.Y + v43.Y
+		local v48 = (mouse.X - v44) / (v45 - v44)
+		local v49 = 1 - math.clamp(v48, 0, 1)
+		local v50 = (mouse.Y - v46) / (v47 - v46)
+		local v51 = 1 - math.clamp(v50, 0, 1)
+		v41.Picker.Position = UDim2.new(1 - v49, 0, 1 - v51, 0)
+		colorHue = v49
+		colorSaturation = v51
+		local v52 = Color3.fromHSV(colorHue, colorSaturation, colorBrightness)
+		local v53 = logicPropertiesMenu.Properties.Color
+		local v54 = v52.R * 255
+		local v55 = math.round(v54)
+		local v56 = v52.G * 255
+		local v57 = math.round(v56)
+		local v58 = v52.B * 255
+		v53.Text = v55 .. ", " .. v57 .. ", " .. math.round(v58)
+		task.wait()
+	until isPickingColor == false
+end)
+logicPropertiesMenu.Properties.ColorPick.Brightness.Picker.MouseButton1Down:Connect(function()
+	-- upvalues: (ref) isPickingBrightness, (copy) logicPropertiesMenu, (copy) mouse, (ref) colorBrightness, (ref) colorHue, (ref) colorSaturation
+	isPickingBrightness = true
+	local v59 = logicPropertiesMenu.Properties.ColorPick.Brightness
+	repeat
+		local v60 = v59.AbsolutePosition
+		local v61 = v59.AbsoluteSize
+		local v62 = v60.Y
+		local v63 = v60.Y + v61.Y
+		local v64 = (mouse.Y - v62) / (v63 - v62)
+		local v65 = 1 - math.clamp(v64, 0, 1)
+		v59.Picker.Position = UDim2.new(0.5, 0, 1 - v65, 0)
+		colorBrightness = v65
+		local v66 = Color3.fromHSV(colorHue, colorSaturation, colorBrightness)
+		local v67 = logicPropertiesMenu.Properties.Color
+		local v68 = v66.R * 255
+		local v69 = math.round(v68)
+		local v70 = v66.G * 255
+		local v71 = math.round(v70)
+		local v72 = v66.B * 255
+		v67.Text = v69 .. ", " .. v71 .. ", " .. math.round(v72)
+		task.wait()
+	until isPickingBrightness == false
+end)
+userInputService.InputEnded:Connect(function(p73)
+	-- upvalues: (ref) isPickingColor, (ref) isPickingBrightness, (copy) buildEvent, (copy) selectionHandler, (copy) logicPropertiesMenu
+	if p73.UserInputType == Enum.UserInputType.MouseButton1 or (p73.KeyCode == Enum.KeyCode.ButtonA or p73.UserInputType == Enum.UserInputType.Touch) then
+		if isPickingColor == true or isPickingBrightness == true then
+			isPickingColor = false
+			isPickingBrightness = false
+			local v74 = buildEvent
+			local v75 = selectionHandler:SendSelected()
+			local v76 = Color3.fromRGB
+			local v77 = string.split
+			local v78 = logicPropertiesMenu.Properties.Color.Text
+			v74:FireServer("Color", v75, v76(unpack(v77(v78))))
+		end
+	end
+end)
+local function createVector3Input(p79, p80, p_u_81)
+	-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+	local v_u_82 = script.TextInput:Clone()
+	v_u_82.PlaceholderText = p79
+	v_u_82.Text = p80.X .. ", " .. p80.Y .. ", " .. p80.Z or "0, 0, 0"
+	v_u_82.Parent = propertiesMenu.Properties2
+	v_u_82.FocusLost:Connect(function()
+		-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) p_u_81, (copy) v_u_82
+		local v83 = buildEvent
+		local v84 = selectionHandler:SendSelected()
+		local v85 = p_u_81
+		local v86 = string.split
+		local v87 = v_u_82.Text
+		local v88 = unpack
+		v83:FireServer("LogicProp", v84, v85, (Vector3.new(v88(v86(v87)))))
+	end)
+end
+local function createBooleanButton(p90, p_u_91, p_u_92)
+	-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+	local v_u_93 = script.BooleanInput:Clone()
+	v_u_93.Text = p90 or ""
+	v_u_93.Parent = propertiesMenu.Properties2
+	local v_u_94 = p_u_92 == nil and true or p_u_92()
+	v_u_93.BackgroundColor3 = v_u_94 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+	v_u_93.MouseButton1Down:Connect(function()
+		-- upvalues: (copy) p_u_92, (ref) v_u_94, (ref) buildEvent, (ref) selectionHandler, (copy) p_u_91, (copy) v_u_93
+		if p_u_92 then
+			v_u_94 = not v_u_94
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), p_u_91, v_u_94)
+			v_u_93.BackgroundColor3 = v_u_94 == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+		else
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), p_u_91)
+		end
+	end)
+end
+local logicTypeHandlers = {
+	["Touch"] = function(_)
+		-- upvalues: (copy) propertiesMenu
+		propertiesMenu.Properties2.Input.Visible = false
+	end,
+	["And"] = function(p96)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		local v97 = p96:GetAttribute("DMG")
+		local v_u_98 = script.TextInput:Clone()
+		v_u_98.PlaceholderText = "Threshold"
+		v_u_98.Text = v97 or ""
+		v_u_98.Parent = propertiesMenu.Properties2
+		local v_u_99 = "Damage"
+		v_u_98.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_99, (copy) v_u_98
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_99, v_u_98.Text)
+		end)
+	end,
+	["XOR"] = function(p100)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		local v101 = p100:GetAttribute("DMG")
+		local v_u_102 = script.TextInput:Clone()
+		v_u_102.PlaceholderText = "Threshold"
+		v_u_102.Text = v101 or ""
+		v_u_102.Parent = propertiesMenu.Properties2
+		local v_u_103 = "Damage"
+		v_u_102.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_103, (copy) v_u_102
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_103, v_u_102.Text)
+		end)
+	end,
+	["Prompt"] = function(p104)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Input.Visible = false
+		local v105 = p104:GetAttribute("MoveNameFt")
+		local v_u_106 = script.TextInput:Clone()
+		v_u_106.PlaceholderText = "Action"
+		v_u_106.Text = v105 or ""
+		v_u_106.Parent = propertiesMenu.Properties2
+		local v_u_107 = "MoveNameFt"
+		v_u_106.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_107, (copy) v_u_106
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_107, v_u_106.Text)
+		end)
+		local v108 = p104:GetAttribute("DMG")
+		local v_u_109 = script.TextInput:Clone()
+		v_u_109.PlaceholderText = "Duration"
+		v_u_109.Text = v108 or ""
+		v_u_109.Parent = propertiesMenu.Properties2
+		local v_u_110 = "Damage"
+		v_u_109.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_110, (copy) v_u_109
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_110, v_u_109.Text)
+		end)
+	end,
+	["Relay"] = function(p111)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) localPlayer, (copy) uiSounds
+		propertiesMenu.Properties2.Input.Visible = false
+		propertiesMenu.Properties2.Output.Visible = false
+		local v112 = p111:GetAttribute("DMG")
+		local v_u_113 = script.TextInput:Clone()
+		v_u_113.PlaceholderText = "Output Range"
+		v_u_113.Text = v112 or ""
+		v_u_113.Parent = propertiesMenu.Properties2
+		local v_u_114 = "Damage"
+		v_u_113.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_114, (copy) v_u_113
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_114, v_u_113.Text)
+		end)
+		local v115 = p111:GetAttribute("Time")
+		local v_u_116 = script.TextInput:Clone()
+		v_u_116.PlaceholderText = "Input Range"
+		v_u_116.Text = v115 or ""
+		v_u_116.Parent = propertiesMenu.Properties2
+		local v_u_117 = "Delay"
+		v_u_116.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_117, (copy) v_u_116
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_117, v_u_116.Text)
+		end)
+		local v118 = p111:GetAttribute("CD")
+		local v_u_119 = script.TextInput:Clone()
+		v_u_119.PlaceholderText = "Volume"
+		v_u_119.Text = v118 or ""
+		v_u_119.Parent = propertiesMenu.Properties2
+		local v_u_120 = "Cooldown"
+		v_u_119.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_120, (copy) v_u_119
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_120, v_u_119.Text)
+		end)
+		local function v_u_121()
+			-- upvalues: (ref) localPlayer
+			return localPlayer.Character:GetPivot()
+		end
+		local v122 = script.BooleanInput:Clone()
+		v122.Text = "Set Destination"
+		v122.Parent = propertiesMenu.Properties2
+		local v_u_123 = "Destination"
+		v122.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_123, (ref) buildEvent, (copy) v_u_121
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_123 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_123, v_u_121())
+			else
+				v_u_121()
+			end
+		end)
+		local function v_u_128()
+			-- upvalues: (ref) selectionHandler
+			local v124 = {}
+			for v125, _ in selectionHandler.Selected do
+				if v125.Name == "Relay" then
+					local v126 = v125.Dest
+					table.insert(v124, v126)
+				end
+				selectionHandler:DeselectPart(v125)
+			end
+			for _, v127 in v124 do
+				selectionHandler:SelectPart(v127)
+			end
+		end
+		local v129 = script.BooleanInput:Clone()
+		v129.Text = "Select Destination"
+		v129.Parent = propertiesMenu.Properties2
+		local v_u_130 = nil
+		v129.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_130, (ref) buildEvent, (copy) v_u_128
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_130 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_130, v_u_128())
+			else
+				v_u_128()
+			end
+		end)
+		local function v_u_134()
+			-- upvalues: (ref) selectionHandler, (ref) buildEvent
+			local v131 = {}
+			for v132, v133 in selectionHandler:SendSelected() do
+				v131[v132] = v133.CFrame
+			end
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Destination", v131)
+		end
+		local v135 = script.BooleanInput:Clone()
+		v135.Text = "Reset Destination"
+		v135.Parent = propertiesMenu.Properties2
+		local v_u_136 = nil
+		v135.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_136, (ref) buildEvent, (copy) v_u_134
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_136 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_136, v_u_134())
+			else
+				v_u_134()
+			end
+		end)
+	end,
+	["Timer"] = function(p137)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		local v138 = p137:GetAttribute("Time")
+		local v_u_139 = script.TextInput:Clone()
+		v_u_139.PlaceholderText = "Delay"
+		v_u_139.Text = v138 or ""
+		v_u_139.Parent = propertiesMenu.Properties2
+		local v_u_140 = "Delay"
+		v_u_139.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_140, (copy) v_u_139
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_140, v_u_139.Text)
+		end)
+	end,
+	["Light"] = function(p_u_141)
+		-- upvalues: (copy) createBooleanButton
+		createBooleanButton("Flip", "Flip", function()
+			-- upvalues: (copy) p_u_141
+			return p_u_141:GetAttribute("Flip")
+		end)
+	end,
+	["Damage"] = function(p_u_142)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton
+		propertiesMenu.Properties2.Output.Visible = false
+		local v143 = p_u_142:GetAttribute("DMG")
+		local v_u_144 = script.TextInput:Clone()
+		v_u_144.PlaceholderText = "Damage"
+		v_u_144.Text = v143 or ""
+		v_u_144.Parent = propertiesMenu.Properties2
+		local v_u_145 = "Damage"
+		v_u_144.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_145, (copy) v_u_144
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_145, v_u_144.Text)
+		end)
+		createBooleanButton("Max HP", "Flip", function()
+			-- upvalues: (copy) p_u_142
+			return p_u_142:GetAttribute("Flip")
+		end)
+	end,
+	["Sound"] = function(p_u_146)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton
+		propertiesMenu.Properties2.Output.Visible = false
+		local v147 = p_u_146.Core.Sound.SoundId
+		local v148 = string.sub(v147, 14, -1)
+		local v_u_149 = script.TextInput:Clone()
+		v_u_149.PlaceholderText = "Sound ID"
+		v_u_149.Text = v148 or ""
+		v_u_149.Parent = propertiesMenu.Properties2
+		local v_u_150 = "SoundId"
+		v_u_149.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_150, (copy) v_u_149
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_150, v_u_149.Text)
+		end)
+		local v151 = p_u_146.Core.Sound.Volume
+		local v152 = tostring(v151)
+		local v_u_153 = script.TextInput:Clone()
+		v_u_153.PlaceholderText = "Volume"
+		v_u_153.Text = v152 or ""
+		v_u_153.Parent = propertiesMenu.Properties2
+		local v_u_154 = "SoundVol"
+		v_u_153.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_154, (copy) v_u_153
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_154, v_u_153.Text)
+		end)
+		local v155 = p_u_146.Core.Sound.RollOffMaxDistance
+		local v156 = tostring(v155)
+		local v_u_157 = script.TextInput:Clone()
+		v_u_157.PlaceholderText = "Range"
+		v_u_157.Text = v156 or ""
+		v_u_157.Parent = propertiesMenu.Properties2
+		local v_u_158 = "SoundRange"
+		v_u_157.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_158, (copy) v_u_157
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_158, v_u_157.Text)
+		end)
+		createBooleanButton("Looped", "SoundLoop", function()
+			-- upvalues: (copy) p_u_146
+			return p_u_146.Core.Sound.Looped
+		end)
+	end,
+	["Boost"] = function(p159)
+		-- upvalues: (copy) propertiesMenu, (copy) createVector3Input
+		propertiesMenu.Properties2.Output.Visible = false
+		createVector3Input("Boost Direction", p159:GetAttribute("Boost"), "Boost")
+	end,
+	["Moveset"] = function(p_u_160)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton, (copy) listData, (copy) builderGui, (copy) uiSounds, (copy) builderModule
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Visible = true
+		local v161 = p_u_160:GetAttribute("MoveName")
+		local v_u_162 = script.TextInput:Clone()
+		v_u_162.PlaceholderText = "Move Name"
+		v_u_162.Text = v161 or ""
+		v_u_162.Parent = propertiesMenu.Properties2
+		local v_u_163 = "MoveName"
+		v_u_162.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_163, (copy) v_u_162
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_163, v_u_162.Text)
+		end)
+		local v164 = tostring(p_u_160:GetAttribute("CD"))
+		local v_u_165 = script.TextInput:Clone()
+		v_u_165.PlaceholderText = "Move Cooldown"
+		v_u_165.Text = v164 or ""
+		v_u_165.Parent = propertiesMenu.Properties2
+		local v_u_166 = "Cooldown"
+		v_u_165.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_166, (copy) v_u_165
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_166, v_u_165.Text)
+		end)
+		local v167 = tostring(p_u_160:GetAttribute("Key"))
+		local v_u_168 = script.TextInput:Clone()
+		v_u_168.PlaceholderText = "Move Key"
+		v_u_168.Text = v167 or ""
+		v_u_168.Parent = propertiesMenu.Properties2
+		local v_u_169 = "Key"
+		v_u_168.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_169, (copy) v_u_168
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_169, v_u_168.Text)
+		end)
+		createBooleanButton("Add", "Flip", function()
+			-- upvalues: (copy) p_u_160
+			return p_u_160:GetAttribute("Flip")
+		end)
+		local v170 = p_u_160:GetAttribute("MoveNameFt")
+		local v_u_171 = script.TextInput:Clone()
+		v_u_171.PlaceholderText = "Display Name"
+		v_u_171.Text = v170 or ""
+		v_u_171.Parent = propertiesMenu.Properties2
+		local v_u_172 = "MoveNameFt"
+		v_u_171.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_172, (copy) v_u_171
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_172, v_u_171.Text)
+		end)
+		for _, v173 in logicPropertiesMenu.Properties2.MoveList:GetChildren() do
+			if v173:IsA("TextButton") then
+				v173:Destroy()
+			end
+		end
+		local v174 = 0
+		for _, v_u_175 in listData.MoveList do
+			for v_u_176 = 2, #v_u_175 do
+				local v177 = builderGui.Preset.Button:Clone()
+				v177.LayoutOrder = v174
+				v177.BackgroundColor3 = v_u_175[1][2]
+				v174 = v174 + 1
+				v177.Parent = logicPropertiesMenu.Properties2.MoveList
+				v177.Text = v_u_175[v_u_176]
+				v177.MouseButton1Down:Connect(function()
+					-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_162, (copy) v_u_175, (copy) v_u_176, (ref) buildEvent
+					selectionHandler:PlaySound(uiSounds.Create)
+					v_u_162.Text = v_u_175[v_u_176]
+					buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", v_u_175[v_u_176])
+				end)
+			end
+		end
+		local v178 = builderGui.Preset.Button:Clone()
+		v178.LayoutOrder = -2
+		v178.Parent = logicPropertiesMenu.Properties2.MoveList
+		v178.Text = "Random"
+		v178.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_162, (ref) buildEvent
+			selectionHandler:PlaySound(uiSounds.Create)
+			v_u_162.Text = "Random"
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", "Random")
+		end)
+		if #selectionHandler:SendSelected() <= 1 then
+			local v179 = builderGui.Preset.Button:Clone()
+			v179.LayoutOrder = -1
+			v179.Parent = logicPropertiesMenu.Properties2.MoveList
+			v179.Text = "Custom"
+			v179.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) selectionHandler, (ref) uiSounds, (ref) logicPropertiesMenu, (ref) propertiesMenu, (ref) buildEvent, (copy) v_u_162, (ref) builderModule, (copy) p_u_160
+				selectionHandler:PlaySound(uiSounds.Create)
+				logicPropertiesMenu.Visible = false
+				propertiesMenu.Parent.Builder.Visible = true
+				propertiesMenu.Parent.Character.Visible = false
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", "Custom")
+				v_u_162.Text = "Custom"
+				builderModule:updateKeys(p_u_160:GetAttribute("Dict"))
+			end)
+		end
+	end,
+	["Special"] = function(p_u_180)
+		-- upvalues: (copy) propertiesMenu, (copy) builderModule, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+		propertiesMenu.Properties2.Output.Visible = false
+		local function v_u_181()
+			-- upvalues: (ref) propertiesMenu, (ref) builderModule, (copy) p_u_180
+			propertiesMenu.Parent.Builder.Visible = true
+			propertiesMenu.Parent.Character.Visible = false
+			builderModule:updateKeys(p_u_180:GetAttribute("Dict"))
+		end
+		local v182 = script.BooleanInput:Clone()
+		v182.Text = "Custom"
+		v182.Parent = propertiesMenu.Properties2
+		local v_u_183 = nil
+		v182.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_183, (ref) buildEvent, (copy) v_u_181
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_183 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_183, v_u_181())
+			else
+				v_u_181()
+			end
+		end)
+		local v184 = p_u_180:GetAttribute("MoveNameFt")
+		local v_u_185 = script.TextInput:Clone()
+		v_u_185.PlaceholderText = "Display Name"
+		v_u_185.Text = v184 or ""
+		v_u_185.Parent = propertiesMenu.Properties2
+		local v_u_186 = "MoveNameFt"
+		v_u_185.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_186, (copy) v_u_185
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_186, v_u_185.Text)
+		end)
+		local v187 = tostring(p_u_180:GetAttribute("CD"))
+		local v_u_188 = script.TextInput:Clone()
+		v_u_188.PlaceholderText = "Cooldown"
+		v_u_188.Text = v187 or ""
+		v_u_188.Parent = propertiesMenu.Properties2
+		local v_u_189 = "Cooldown"
+		v_u_188.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_189, (copy) v_u_188
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_189, v_u_188.Text)
+		end)
+	end,
+	["Awakening"] = function(p_u_190)
+		-- upvalues: (copy) propertiesMenu, (copy) builderModule, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+		propertiesMenu.Properties2.Output.Visible = false
+		local function v_u_191()
+			-- upvalues: (ref) propertiesMenu, (ref) builderModule, (copy) p_u_190
+			propertiesMenu.Parent.Builder.Visible = true
+			propertiesMenu.Parent.Character.Visible = false
+			builderModule:updateKeys(p_u_190:GetAttribute("Dict"))
+		end
+		local v192 = script.BooleanInput:Clone()
+		v192.Text = "Custom"
+		v192.Parent = propertiesMenu.Properties2
+		local v_u_193 = nil
+		v192.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_193, (ref) buildEvent, (copy) v_u_191
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_193 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_193, v_u_191())
+			else
+				v_u_191()
+			end
+		end)
+		local v194 = p_u_190:GetAttribute("MoveNameFt")
+		local v_u_195 = script.TextInput:Clone()
+		v_u_195.PlaceholderText = "Display Name"
+		v_u_195.Text = v194 or ""
+		v_u_195.Parent = propertiesMenu.Properties2
+		local v_u_196 = "MoveNameFt"
+		v_u_195.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_196, (copy) v_u_195
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_196, v_u_195.Text)
+		end)
+		local v197 = tostring(p_u_190:GetAttribute("CD"))
+		local v_u_198 = script.TextInput:Clone()
+		v_u_198.PlaceholderText = "Duration"
+		v_u_198.Text = v197 or ""
+		v_u_198.Parent = propertiesMenu.Properties2
+		local v_u_199 = "Cooldown"
+		v_u_198.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_199, (copy) v_u_198
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_199, v_u_198.Text)
+		end)
+		local v200 = tostring(p_u_190:GetAttribute("OutfitDelay"))
+		local v_u_201 = script.TextInput:Clone()
+		v_u_201.PlaceholderText = "Outfit Delay"
+		v_u_201.Text = v200 or ""
+		v_u_201.Parent = propertiesMenu.Properties2
+		local v_u_202 = "OutfitDelay"
+		v_u_201.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_202, (copy) v_u_201
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_202, v_u_201.Text)
+		end)
+	end,
+	["Character"] = function(p_u_203)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) characterModule, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent, (copy) createBooleanButton, (copy) listData, (copy) builderGui
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Visible = true
+		local function v_u_204()
+			-- upvalues: (ref) propertiesMenu, (ref) characterModule, (copy) p_u_203
+			propertiesMenu.Parent.Character.Visible = true
+			propertiesMenu.Parent.Builder.Visible = false
+			characterModule:updateKeys(p_u_203:GetAttribute("Dict"))
+		end
+		local v205 = script.BooleanInput:Clone()
+		v205.Text = "Configure"
+		v205.Parent = propertiesMenu.Properties2
+		local v_u_206 = nil
+		v205.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_206, (ref) buildEvent, (copy) v_u_204
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_206 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_206, v_u_204())
+			else
+				v_u_204()
+			end
+		end)
+		local v207 = p_u_203:GetAttribute("MoveNameFt")
+		local v_u_208 = script.TextInput:Clone()
+		v_u_208.PlaceholderText = "Display Name"
+		v_u_208.Text = v207 or ""
+		v_u_208.Parent = propertiesMenu.Properties2
+		local v_u_209 = "MoveNameFt"
+		v_u_208.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_209, (copy) v_u_208
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_209, v_u_208.Text)
+		end)
+		local v210 = p_u_203:GetAttribute("MoveName")
+		local v_u_211 = script.TextInput:Clone()
+		v_u_211.PlaceholderText = "Base Character"
+		v_u_211.Text = v210 or ""
+		v_u_211.Parent = propertiesMenu.Properties2
+		local v_u_212 = "MoveName"
+		v_u_211.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_212, (copy) v_u_211
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_212, v_u_211.Text)
+		end)
+		local v213 = tostring(p_u_203:GetAttribute("IMG"))
+		local v_u_214 = script.TextInput:Clone()
+		v_u_214.PlaceholderText = "Icon"
+		v_u_214.Text = v213 or ""
+		v_u_214.Parent = propertiesMenu.Properties2
+		local v_u_215 = "Image"
+		v_u_214.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_215, (copy) v_u_214
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_215, v_u_214.Text)
+		end)
+		createBooleanButton("Show in List", "Flip", function()
+			-- upvalues: (copy) p_u_203
+			return p_u_203:GetAttribute("Flip")
+		end)
+		for _, v216 in logicPropertiesMenu.Properties2.MoveList:GetChildren() do
+			if v216:IsA("TextButton") then
+				v216:Destroy()
+			end
+		end
+		local v217 = 0
+		for _, v_u_218 in listData.MoveList do
+			local v219 = builderGui.Preset.Button:Clone()
+			v219.LayoutOrder = v217
+			v219.BackgroundColor3 = v_u_218[1][2]
+			v217 = v217 + 1
+			v219.Parent = logicPropertiesMenu.Properties2.MoveList
+			v219.Text = v_u_218[1][1]
+			v219.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_211, (copy) v_u_218, (ref) buildEvent
+				selectionHandler:PlaySound(uiSounds.Create)
+				v_u_211.Text = v_u_218[1][1]
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", v_u_218[1][1])
+			end)
+		end
+	end,
+	["MovesetClear"] = function(_)
+		-- upvalues: (copy) propertiesMenu
+		propertiesMenu.Properties2.Output.Visible = false
+	end,
+	["Teleport"] = function(_)
+		-- upvalues: (copy) propertiesMenu, (copy) localPlayer, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+		propertiesMenu.Properties2.Output.Visible = false
+		local function v_u_220()
+			-- upvalues: (ref) localPlayer
+			return localPlayer.Character:GetPivot()
+		end
+		local v221 = script.BooleanInput:Clone()
+		v221.Text = "Set Destination"
+		v221.Parent = propertiesMenu.Properties2
+		local v_u_222 = "Destination"
+		v221.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_222, (ref) buildEvent, (copy) v_u_220
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_222 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_222, v_u_220())
+			else
+				v_u_220()
+			end
+		end)
+		local function v_u_227()
+			-- upvalues: (ref) selectionHandler
+			local v223 = {}
+			for v224, _ in selectionHandler.Selected do
+				if v224.Name == "Teleport" then
+					local v225 = v224.Dest
+					table.insert(v223, v225)
+				end
+				selectionHandler:DeselectPart(v224)
+			end
+			for _, v226 in v223 do
+				selectionHandler:SelectPart(v226)
+			end
+		end
+		local v228 = script.BooleanInput:Clone()
+		v228.Text = "Select Destination"
+		v228.Parent = propertiesMenu.Properties2
+		local v_u_229 = nil
+		v228.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_229, (ref) buildEvent, (copy) v_u_227
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_229 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_229, v_u_227())
+			else
+				v_u_227()
+			end
+		end)
+		local function v_u_233()
+			-- upvalues: (ref) selectionHandler, (ref) buildEvent
+			local v230 = {}
+			for v231, v232 in selectionHandler:SendSelected() do
+				v230[v231] = v232.CFrame
+			end
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Destination", v230)
+		end
+		local v234 = script.BooleanInput:Clone()
+		v234.Text = "Reset Destination"
+		v234.Parent = propertiesMenu.Properties2
+		local v_u_235 = nil
+		v234.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_235, (ref) buildEvent, (copy) v_u_233
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_235 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_235, v_u_233())
+			else
+				v_u_233()
+			end
+		end)
+	end,
+	["Image"] = function(p_u_236)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton
+		propertiesMenu.Properties2.Input.Visible = false
+		propertiesMenu.Properties2.Output.Visible = false
+		local v237 = p_u_236:GetAttribute("IMG")
+		local v_u_238 = script.TextInput:Clone()
+		v_u_238.PlaceholderText = "Image ID"
+		v_u_238.Text = v237 or ""
+		v_u_238.Parent = propertiesMenu.Properties2
+		local v_u_239 = "Image"
+		v_u_238.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_239, (copy) v_u_238
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_239, v_u_238.Text)
+		end)
+		createBooleanButton("Background", "Flip", function()
+			-- upvalues: (copy) p_u_236
+			return p_u_236:GetAttribute("Flip")
+		end)
+	end,
+	["Texture"] = function(p_u_240)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton
+		propertiesMenu.Properties2.Input.Visible = false
+		propertiesMenu.Properties2.Output.Visible = false
+		local v241 = p_u_240:GetAttribute("IMG")
+		local v_u_242 = script.TextInput:Clone()
+		v_u_242.PlaceholderText = "Image ID"
+		v_u_242.Text = v241 or ""
+		v_u_242.Parent = propertiesMenu.Properties2
+		local v_u_243 = "Image"
+		v_u_242.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_243, (copy) v_u_242
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_243, v_u_242.Text)
+		end)
+		local v244 = p_u_240:GetAttribute("DMG")
+		local v_u_245 = script.TextInput:Clone()
+		v_u_245.PlaceholderText = "X Scale"
+		v_u_245.Text = v244 or ""
+		v_u_245.Parent = propertiesMenu.Properties2
+		local v_u_246 = "Damage"
+		v_u_245.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_246, (copy) v_u_245
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_246, v_u_245.Text)
+		end)
+		local v247 = p_u_240:GetAttribute("Time")
+		local v_u_248 = script.TextInput:Clone()
+		v_u_248.PlaceholderText = "Y Scale"
+		v_u_248.Text = v247 or ""
+		v_u_248.Parent = propertiesMenu.Properties2
+		local v_u_249 = "Delay"
+		v_u_248.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_249, (copy) v_u_248
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_249, v_u_248.Text)
+		end)
+		createBooleanButton("Background", "Flip", function()
+			-- upvalues: (copy) p_u_240
+			return p_u_240:GetAttribute("Flip")
+		end)
+	end,
+	["Scale"] = function(p250)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Output.Visible = false
+		local v251 = p250:GetAttribute("DMG")
+		local v_u_252 = script.TextInput:Clone()
+		v_u_252.PlaceholderText = "Scale"
+		v_u_252.Text = v251 or ""
+		v_u_252.Parent = propertiesMenu.Properties2
+		local v_u_253 = "Damage"
+		v_u_252.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_253, (copy) v_u_252
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_253, v_u_252.Text)
+		end)
+	end,
+	["Jeep"] = function(_)
+		-- upvalues: (copy) propertiesMenu
+		propertiesMenu.Properties2.Output.Visible = false
+	end,
+	["Team"] = function(p254)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Properties2.Visible = false
+		local v255 = logicPropertiesMenu.Properties.Color
+		local v256 = p254.Color.R * 255
+		local v257 = math.round(v256)
+		local v258 = p254.Color.G * 255
+		local v259 = math.round(v258)
+		local v260 = p254.Color.B * 255
+		v255.Text = v257 .. ", " .. v259 .. ", " .. math.round(v260)
+		local v261 = p254:GetAttribute("MoveNameFt")
+		local v_u_262 = script.TextInput:Clone()
+		v_u_262.PlaceholderText = "Name"
+		v_u_262.Text = v261 or ""
+		v_u_262.Parent = propertiesMenu.Properties2
+		local v_u_263 = "MoveNameFt"
+		v_u_262.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_263, (copy) v_u_262
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_263, v_u_262.Text)
+		end)
+		logicPropertiesMenu.Visible = true
+		logicPropertiesMenu.Properties.Visible = true
+		logicPropertiesMenu.Properties.Transparent.Visible = false
+		logicPropertiesMenu.Properties.Material.Visible = false
+	end,
+	["Item"] = function(p_u_264)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton, (copy) listData, (copy) builderGui, (copy) uiSounds
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Visible = true
+		local v265 = p_u_264:GetAttribute("MoveName")
+		local v_u_266 = script.TextInput:Clone()
+		v_u_266.PlaceholderText = "Item Name"
+		v_u_266.Text = v265 or ""
+		v_u_266.Parent = propertiesMenu.Properties2
+		local v_u_267 = "MoveName"
+		v_u_266.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_267, (copy) v_u_266
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_267, v_u_266.Text)
+		end)
+		local v268 = tostring(p_u_264:GetAttribute("CD"))
+		local v_u_269 = script.TextInput:Clone()
+		v_u_269.PlaceholderText = "Despawn Timer"
+		v_u_269.Text = v268 or ""
+		v_u_269.Parent = propertiesMenu.Properties2
+		local v_u_270 = "Cooldown"
+		v_u_269.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_270, (copy) v_u_269
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_270, v_u_269.Text)
+		end)
+		createBooleanButton("Disable Drop", "Flip", function()
+			-- upvalues: (copy) p_u_264
+			return p_u_264:GetAttribute("Flip")
+		end)
+		createBooleanButton("Disable Durability", "Flip2", function()
+			-- upvalues: (copy) p_u_264
+			return p_u_264:GetAttribute("Flip2")
+		end)
+		for _, v271 in logicPropertiesMenu.Properties2.MoveList:GetChildren() do
+			if v271:IsA("TextButton") then
+				v271:Destroy()
+			end
+		end
+		local v272 = 0
+		for _, v_u_273 in listData.Items do
+			local v274 = builderGui.Preset.Button:Clone()
+			v274.LayoutOrder = v272
+			v272 = v272 + 1
+			v274.Parent = logicPropertiesMenu.Properties2.MoveList
+			v274.Text = v_u_273
+			v274.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_266, (copy) v_u_273, (ref) buildEvent
+				selectionHandler:PlaySound(uiSounds.Create)
+				v_u_266.Text = v_u_273
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", v_u_273)
+			end)
+		end
+	end,
+	["Move"] = function(p275)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) uiSounds
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Properties2.Visible = false
+		local v276 = logicPropertiesMenu.Properties.Color
+		local v277 = p275.Color.R * 255
+		local v278 = math.round(v277)
+		local v279 = p275.Color.G * 255
+		local v280 = math.round(v279)
+		local v281 = p275.Color.B * 255
+		v276.Text = v278 .. ", " .. v280 .. ", " .. math.round(v281)
+		logicPropertiesMenu.Visible = true
+		logicPropertiesMenu.Properties.Visible = true
+		logicPropertiesMenu.Properties.Transparent.Text = p275:GetAttribute("Time") or 0
+		logicPropertiesMenu.Properties.Material.Visible = true
+		local v282 = tostring(p275:GetAttribute("CD"))
+		local v_u_283 = script.TextInput:Clone()
+		v_u_283.PlaceholderText = "Speed"
+		v_u_283.Text = v282 or ""
+		v_u_283.Parent = propertiesMenu.Properties2
+		local v_u_284 = "Cooldown"
+		v_u_283.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_284, (copy) v_u_283
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_284, v_u_283.Text)
+		end)
+		local function v_u_289()
+			-- upvalues: (ref) selectionHandler
+			local v285 = {}
+			for v286, _ in selectionHandler.Selected do
+				if v286.Name == "Move" then
+					local v287 = v286.Dest
+					table.insert(v285, v287)
+				end
+				selectionHandler:DeselectPart(v286)
+			end
+			for _, v288 in v285 do
+				selectionHandler:SelectPart(v288)
+			end
+		end
+		local v290 = script.BooleanInput:Clone()
+		v290.Text = "Select Destination"
+		v290.Parent = propertiesMenu.Properties2
+		local v_u_291 = nil
+		v290.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_291, (ref) buildEvent, (copy) v_u_289
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_291 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_291, v_u_289())
+			else
+				v_u_289()
+			end
+		end)
+		local function v_u_295()
+			-- upvalues: (ref) selectionHandler, (ref) buildEvent
+			local v292 = {}
+			for v293, v294 in selectionHandler:SendSelected() do
+				v292[v293] = v294.CFrame
+			end
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Destination", v292)
+		end
+		local v296 = script.BooleanInput:Clone()
+		v296.Text = "Reset Destination"
+		v296.Parent = propertiesMenu.Properties2
+		local v_u_297 = nil
+		v296.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_297, (ref) buildEvent, (copy) v_u_295
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_297 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_297, v_u_295())
+			else
+				v_u_295()
+			end
+		end)
+	end,
+	["Dest"] = function(_)
+		-- upvalues: (copy) propertiesMenu, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+		propertiesMenu.Properties2.Input.Visible = false
+		propertiesMenu.Properties2.Output.Visible = false
+		local function v_u_302()
+			-- upvalues: (ref) selectionHandler
+			local v298 = {}
+			for v299, _ in selectionHandler.Selected do
+				if v299.Name == "Dest" then
+					local v300 = v299.Parent
+					table.insert(v298, v300)
+				end
+				selectionHandler:DeselectPart(v299)
+			end
+			for _, v301 in v298 do
+				selectionHandler:SelectPart(v301)
+			end
+		end
+		local v303 = script.BooleanInput:Clone()
+		v303.Text = "Select Origin"
+		v303.Parent = propertiesMenu.Properties2
+		local v_u_304 = nil
+		v303.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_304, (ref) buildEvent, (copy) v_u_302
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_304 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_304, v_u_302())
+			else
+				v_u_302()
+			end
+		end)
+		local function v_u_309()
+			-- upvalues: (ref) selectionHandler, (ref) buildEvent
+			local v305 = {}
+			local v306 = {}
+			for v307, v308 in selectionHandler:SendSelected() do
+				v305[v307] = v308.Parent.CFrame
+				v306[v307] = v308.Parent
+			end
+			buildEvent:FireServer("LogicProp", v306, "Destination", v305)
+		end
+		local v310 = script.BooleanInput:Clone()
+		v310.Text = "Reset Destination"
+		v310.Parent = propertiesMenu.Properties2
+		local v_u_311 = nil
+		v310.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_311, (ref) buildEvent, (copy) v_u_309
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_311 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_311, v_u_309())
+			else
+				v_u_309()
+			end
+		end)
+	end,
+	["Fun"] = function(p_u_312)
+		-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton, (copy) builderGui, (copy) uiSounds
+		propertiesMenu.Properties2.Output.Visible = false
+		logicPropertiesMenu.Visible = true
+		local v313 = p_u_312:GetAttribute("MoveName")
+		local v_u_314 = script.TextInput:Clone()
+		v_u_314.PlaceholderText = "Setting Name"
+		v_u_314.Text = v313 or ""
+		v_u_314.Parent = propertiesMenu.Properties2
+		local v_u_315 = "MoveName"
+		v_u_314.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_315, (copy) v_u_314
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_315, v_u_314.Text)
+		end)
+		createBooleanButton("Set", "Flip", function()
+			-- upvalues: (copy) p_u_312
+			return p_u_312:GetAttribute("Flip")
+		end)
+		for _, v316 in logicPropertiesMenu.Properties2.MoveList:GetChildren() do
+			if v316:IsA("TextButton") then
+				v316:Destroy()
+			end
+		end
+		local v317 = 0
+		for _, v_u_318 in game.ReplicatedStorage.Modules.Settings.Fun:GetChildren() do
+			local v319 = builderGui.Preset.Button:Clone()
+			v319.LayoutOrder = v317
+			v317 = v317 + 1
+			v319.Parent = logicPropertiesMenu.Properties2.MoveList
+			v319.Text = v_u_318.Name
+			v319.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_314, (copy) v_u_318, (ref) buildEvent
+				selectionHandler:PlaySound(uiSounds.Create)
+				v_u_314.Text = v_u_318.Name
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", v_u_318.Name)
+			end)
+		end
+	end,
+	["Camera"] = function(_)
+		-- upvalues: (copy) propertiesMenu, (copy) selectionHandler, (copy) uiSounds, (copy) buildEvent
+		propertiesMenu.Properties2.Output.Visible = false
+		local function v_u_320()
+			return workspace.CurrentCamera.CFrame
+		end
+		local v321 = script.BooleanInput:Clone()
+		v321.Text = "Set Destination"
+		v321.Parent = propertiesMenu.Properties2
+		local v_u_322 = "Destination"
+		v321.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_322, (ref) buildEvent, (copy) v_u_320
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_322 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_322, v_u_320())
+			else
+				v_u_320()
+			end
+		end)
+		local function v_u_327()
+			-- upvalues: (ref) selectionHandler
+			local v323 = {}
+			for v324, _ in selectionHandler.Selected do
+				if v324.Name == "Camera" then
+					local v325 = v324.Dest
+					table.insert(v323, v325)
+				end
+				selectionHandler:DeselectPart(v324)
+			end
+			for _, v326 in v323 do
+				selectionHandler:SelectPart(v326)
+			end
+		end
+		local v328 = script.BooleanInput:Clone()
+		v328.Text = "Select Destination"
+		v328.Parent = propertiesMenu.Properties2
+		local v_u_329 = nil
+		v328.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_329, (ref) buildEvent, (copy) v_u_327
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_329 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_329, v_u_327())
+			else
+				v_u_327()
+			end
+		end)
+		local function v_u_333()
+			-- upvalues: (ref) selectionHandler, (ref) buildEvent
+			local v330 = {}
+			for v331, v332 in selectionHandler:SendSelected() do
+				v330[v331] = v332.CFrame
+			end
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "Destination", v330)
+		end
+		local v334 = script.BooleanInput:Clone()
+		v334.Text = "Reset Destination"
+		v334.Parent = propertiesMenu.Properties2
+		local v_u_335 = nil
+		v334.MouseButton1Down:Connect(function()
+			-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_335, (ref) buildEvent, (copy) v_u_333
+			selectionHandler:PlaySound(uiSounds.Click)
+			if v_u_335 then
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_335, v_u_333())
+			else
+				v_u_333()
+			end
+		end)
+	end,
+	["Dummy"] = function(p_u_336)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton
+		local v337 = p_u_336:GetAttribute("Shirt")
+		local v_u_338 = script.TextInput:Clone()
+		v_u_338.PlaceholderText = "Shirt ID"
+		v_u_338.Text = v337 or ""
+		v_u_338.Parent = propertiesMenu.Properties2
+		local v_u_339 = "Shirt"
+		v_u_338.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_339, (copy) v_u_338
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_339, v_u_338.Text)
+		end)
+		local v340 = p_u_336:GetAttribute("Pants")
+		local v_u_341 = script.TextInput:Clone()
+		v_u_341.PlaceholderText = "Pants ID"
+		v_u_341.Text = v340 or ""
+		v_u_341.Parent = propertiesMenu.Properties2
+		local v_u_342 = "Pants"
+		v_u_341.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_342, (copy) v_u_341
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_342, v_u_341.Text)
+		end)
+		local v343 = p_u_336:GetAttribute("DMG")
+		local v_u_344 = script.TextInput:Clone()
+		v_u_344.PlaceholderText = "Health"
+		v_u_344.Text = v343 or ""
+		v_u_344.Parent = propertiesMenu.Properties2
+		local v_u_345 = "Damage"
+		v_u_344.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_345, (copy) v_u_344
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_345, v_u_344.Text)
+		end)
+		local v346 = p_u_336:GetAttribute("MoveNameFt")
+		local v_u_347 = script.TextInput:Clone()
+		v_u_347.PlaceholderText = "Dummy Name"
+		v_u_347.Text = v346 or ""
+		v_u_347.Parent = propertiesMenu.Properties2
+		local v_u_348 = "MoveNameFt"
+		v_u_347.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_348, (copy) v_u_347
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_348, v_u_347.Text)
+		end)
+		createBooleanButton("Invincible", "Flip", function()
+			-- upvalues: (copy) p_u_336
+			return p_u_336:GetAttribute("Flip")
+		end)
+		createBooleanButton("Regen Scaling", "Flip2", function()
+			-- upvalues: (copy) p_u_336
+			return p_u_336:GetAttribute("Flip2")
+		end)
+	end,
+	["NPC"] = function(p_u_349)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler, (copy) createBooleanButton, (copy) logicPropertiesMenu, (copy) aiTypes, (copy) builderGui, (copy) uiSounds
+		local v350 = p_u_349:GetAttribute("Shirt")
+		local v_u_351 = script.TextInput:Clone()
+		v_u_351.PlaceholderText = "Shirt ID"
+		v_u_351.Text = v350 or ""
+		v_u_351.Parent = propertiesMenu.Properties2
+		local v_u_352 = "Shirt"
+		v_u_351.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_352, (copy) v_u_351
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_352, v_u_351.Text)
+		end)
+		local v353 = p_u_349:GetAttribute("Pants")
+		local v_u_354 = script.TextInput:Clone()
+		v_u_354.PlaceholderText = "Pants ID"
+		v_u_354.Text = v353 or ""
+		v_u_354.Parent = propertiesMenu.Properties2
+		local v_u_355 = "Pants"
+		v_u_354.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_355, (copy) v_u_354
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_355, v_u_354.Text)
+		end)
+		local v356 = p_u_349:GetAttribute("DMG")
+		local v_u_357 = script.TextInput:Clone()
+		v_u_357.PlaceholderText = "Health"
+		v_u_357.Text = v356 or ""
+		v_u_357.Parent = propertiesMenu.Properties2
+		local v_u_358 = "Damage"
+		v_u_357.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_358, (copy) v_u_357
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_358, v_u_357.Text)
+		end)
+		local v359 = p_u_349:GetAttribute("MoveNameFt")
+		local v_u_360 = script.TextInput:Clone()
+		v_u_360.PlaceholderText = "Dummy Name"
+		v_u_360.Text = v359 or ""
+		v_u_360.Parent = propertiesMenu.Properties2
+		local v_u_361 = "MoveNameFt"
+		v_u_360.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_361, (copy) v_u_360
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_361, v_u_360.Text)
+		end)
+		createBooleanButton("Target NPCs", "Flip", function()
+			-- upvalues: (copy) p_u_349
+			return p_u_349:GetAttribute("Flip")
+		end)
+		createBooleanButton("Regen Scaling", "Flip2", function()
+			-- upvalues: (copy) p_u_349
+			return p_u_349:GetAttribute("Flip2")
+		end)
+		logicPropertiesMenu.Visible = true
+		local v362 = p_u_349:GetAttribute("MoveName")
+		local v_u_363 = script.TextInput:Clone()
+		v_u_363.PlaceholderText = "Playstyle"
+		v_u_363.Text = v362 or ""
+		v_u_363.Parent = propertiesMenu.Properties2
+		local v_u_364 = "MoveName"
+		v_u_363.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_364, (copy) v_u_363
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_364, v_u_363.Text)
+		end)
+		for _, v365 in logicPropertiesMenu.Properties2.MoveList:GetChildren() do
+			if v365:IsA("TextButton") then
+				v365:Destroy()
+			end
+		end
+		local v366 = 0
+		for _, v_u_367 in aiTypes do
+			local v368 = builderGui.Preset.Button:Clone()
+			v368.LayoutOrder = v366
+			v366 = v366 + 1
+			v368.Parent = logicPropertiesMenu.Properties2.MoveList
+			v368.Text = v_u_367
+			v368.MouseButton1Down:Connect(function()
+				-- upvalues: (ref) selectionHandler, (ref) uiSounds, (copy) v_u_363, (copy) v_u_367, (ref) buildEvent
+				selectionHandler:PlaySound(uiSounds.Create)
+				v_u_363.Text = v_u_367
+				buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), "MoveName", v_u_367)
+			end)
+		end
+	end,
+	["Speed"] = function(p369)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Output.Visible = false
+		local v370 = p369:GetAttribute("DMG")
+		local v_u_371 = script.TextInput:Clone()
+		v_u_371.PlaceholderText = "Speed"
+		v_u_371.Text = v370 or ""
+		v_u_371.Parent = propertiesMenu.Properties2
+		local v_u_372 = "Damage"
+		v_u_371.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_372, (copy) v_u_371
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_372, v_u_371.Text)
+		end)
+	end,
+	["Connect"] = function(p373)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Input.Visible = false
+		local v374 = p373:GetAttribute("MoveName")
+		local v_u_375 = script.TextInput:Clone()
+		v_u_375.PlaceholderText = "Signal"
+		v_u_375.Text = v374 or ""
+		v_u_375.Parent = propertiesMenu.Properties2
+		local v_u_376 = "MoveName"
+		v_u_375.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_376, (copy) v_u_375
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_376, v_u_375.Text)
+		end)
+		local v377 = p373:GetAttribute("DMG")
+		local v_u_378 = script.TextInput:Clone()
+		v_u_378.PlaceholderText = "Range"
+		v_u_378.Text = v377 or ""
+		v_u_378.Parent = propertiesMenu.Properties2
+		local v_u_379 = "Damage"
+		v_u_378.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_379, (copy) v_u_378
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_379, v_u_378.Text)
+		end)
+	end,
+	["Accessory"] = function(p380)
+		-- upvalues: (copy) propertiesMenu, (copy) buildEvent, (copy) selectionHandler
+		propertiesMenu.Properties2.Output.Visible = false
+		local v381 = p380:GetAttribute("Acc")
+		local v_u_382 = script.TextInput:Clone()
+		v_u_382.PlaceholderText = "Accessory ID"
+		v_u_382.Text = v381 or ""
+		v_u_382.Parent = propertiesMenu.Properties2
+		local v_u_383 = "Acc"
+		v_u_382.FocusLost:Connect(function()
+			-- upvalues: (ref) buildEvent, (ref) selectionHandler, (copy) v_u_383, (copy) v_u_382
+			buildEvent:FireServer("LogicProp", selectionHandler:SendSelected(), v_u_383, v_u_382.Text)
+		end)
+	end
+}
+function PropertiesModule.UpdateProperties(_, p385)
+	-- upvalues: (copy) propertiesMenu, (copy) logicPropertiesMenu, (copy) logicTypeHandlers
+	propertiesMenu.Parts.Visible = false
+	propertiesMenu.Parent.Builder.Visible = false
+	propertiesMenu.Parent.Character.Visible = false
+	if p385.Parent == workspace.Logic or p385.Name == "Dest" then
+		propertiesMenu.Properties2.Visible = true
+		logicPropertiesMenu.Visible = false
+		propertiesMenu.Properties2.Input.Text = p385:GetAttribute("I") or ""
+		propertiesMenu.Properties2.Output.Text = p385:GetAttribute("O") or ""
+		for _, v386 in propertiesMenu.Properties2:GetChildren() do
+			if not v386:IsA("UIListLayout") then
+				if v386.Name == "Input" or (v386.Name == "Output" or v386.Name == "Delete") then
+					v386.Visible = true
+				else
+					v386:Destroy()
+				end
+			end
+		end
+		logicPropertiesMenu.Properties.Visible = false
+		logicPropertiesMenu.Properties2.Visible = true
+		if logicTypeHandlers[p385.Name] then
+			logicTypeHandlers[p385.Name](p385)
+			return
+		end
+	else
+		propertiesMenu.Properties.Visible = true
+		logicPropertiesMenu.Visible = true
+		logicPropertiesMenu.Properties.Visible = true
+		logicPropertiesMenu.Properties2.Visible = false
+		logicPropertiesMenu.Properties.Transparent.Visible = true
+		logicPropertiesMenu.Properties.Material.Visible = true
+		local v387 = logicPropertiesMenu.Properties.Color
+		local v388 = p385.Color.R * 255
+		local v389 = math.round(v388)
+		local v390 = p385.Color.G * 255
+		local v391 = math.round(v390)
+		local v392 = p385.Color.B * 255
+		v387.Text = v389 .. ", " .. v391 .. ", " .. math.round(v392)
+		local v393 = logicPropertiesMenu.Properties.Transparent
+		local v394 = p385.Transparency
+		v393.Text = tostring(v394)
+		propertiesMenu.Properties.CanCollide.BackgroundColor3 = p385.CanCollide == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+		propertiesMenu.Properties.CastShadow.BackgroundColor3 = p385.CastShadow == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+		propertiesMenu.Properties.Breakable.BackgroundColor3 = p385.Parent == workspace.Map.Destructible.Buildable == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+		if p385:IsA("SpawnLocation") then
+			propertiesMenu.Properties.Neutral.Visible = true
+			propertiesMenu.Properties.Neutral.BackgroundColor3 = p385.Neutral == true and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 60, 90)
+			return
+		end
+		propertiesMenu.Properties.Neutral.Visible = false
+	end
+end
+return PropertiesModule
